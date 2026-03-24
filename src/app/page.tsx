@@ -8,7 +8,6 @@ import { toast, Toaster } from 'sonner'
 import { format } from 'date-fns'
 import { es as esLocale, enUS } from 'date-fns/locale'
 import {
-  Home as HomeIcon,
   ArrowLeft,
   Plus,
   Trash2,
@@ -44,9 +43,150 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Calendar as CalendarComponent } from '@/components/ui/calendar'
-import { translations, translateApartmentName, type Language } from '@/lib/translations'
+
+const t = {
+  es: {
+    hotelName: 'Los Rubiales',
+    hotelSubtitle: 'Hotel Rural',
+    home: 'Inicio',
+    admin: 'Admin',
+    welcome: 'Bienvenido',
+    selectApartment: 'Seleccione un apartamento para registrar huéspedes',
+    noApartments: 'No hay apartamentos disponibles',
+    apartment: 'Apartamento',
+    backToApartments: 'Volver',
+    addGuestData: 'Añada los datos de cada huésped',
+    firstName: 'Nombre',
+    firstNamePlaceholder: 'Juan',
+    lastName: 'Apellidos',
+    lastNamePlaceholder: 'García López',
+    documentType: 'Tipo de documento',
+    documentNumber: 'Número de documento',
+    documentNumberPlaceholder: '12345678A',
+    nationality: 'Nacionalidad',
+    nationalityPlaceholder: 'Española',
+    email: 'Email',
+    emailPlaceholder: 'juan@email.com',
+    phone: 'Teléfono',
+    phonePlaceholder: '+34 612 345 678',
+    dni: 'DNI',
+    passport: 'Pasaporte',
+    nie: 'NIE',
+    documentPhoto: 'Foto del documento',
+    takePhoto: 'Capturar foto',
+    changePhoto: 'Cambiar foto',
+    mainGuest: 'Marcar como huésped principal',
+    principal: 'Principal',
+    addGuest: 'Añadir huésped',
+    guests: 'Huéspedes',
+    noGuests: 'No hay huéspedes añadidos',
+    saveRegistration: 'Guardar registro',
+    signature: 'Firma del huésped',
+    signaturePlaceholder: 'Firme aquí',
+    clear: 'Limpiar',
+    stayDates: 'Fechas de estancia',
+    checkInDate: 'Fecha de entrada',
+    checkOutDate: 'Fecha de salida',
+    selectDate: 'Seleccionar fecha',
+    checkIn: 'Entrada',
+    checkOut: 'Salida',
+    status: 'Estado',
+    active: 'Activo',
+    checkedOut: 'Finalizado',
+    checkout: 'Realizar checkout',
+    registrationDetails: 'Detalles del Registro',
+    adminPanel: 'Panel de Administración',
+    noRegistrations: 'No hay registros todavía',
+    errorLoadingApartments: 'Error al cargar los apartamentos',
+    errorLoadingRegistrations: 'Error al cargar los registros',
+    guestAdded: 'Huésped añadido',
+    registrationSaved: 'Registro guardado correctamente',
+    errorSaving: 'Error al guardar el registro',
+    selectApartmentError: 'Selecciona un apartamento',
+    addAtLeastOneGuest: 'Añade al menos un huésped',
+    signatureRequired: 'La firma es requerida',
+    checkoutDone: 'Checkout realizado correctamente',
+    checkoutError: 'Error al realizar el checkout',
+    registrationDeleted: 'Registro eliminado correctamente',
+    deleteError: 'Error al eliminar el registro',
+    deleteConfirmTitle: '¿Eliminar registro?',
+    deleteConfirmDescription: 'Esta acción no se puede deshacer.',
+    cancel: 'Cancelar',
+    delete: 'Eliminar',
+  },
+  en: {
+    hotelName: 'Los Rubiales',
+    hotelSubtitle: 'Rural Hotel',
+    home: 'Home',
+    admin: 'Admin',
+    welcome: 'Welcome',
+    selectApartment: 'Select an apartment to register guests',
+    noApartments: 'No apartments available',
+    apartment: 'Apartment',
+    backToApartments: 'Back',
+    addGuestData: 'Add guest details',
+    firstName: 'First Name',
+    firstNamePlaceholder: 'John',
+    lastName: 'Last Name',
+    lastNamePlaceholder: 'Smith',
+    documentType: 'Document Type',
+    documentNumber: 'Document Number',
+    documentNumberPlaceholder: '12345678A',
+    nationality: 'Nationality',
+    nationalityPlaceholder: 'Spanish',
+    email: 'Email',
+    emailPlaceholder: 'john@email.com',
+    phone: 'Phone',
+    phonePlaceholder: '+34 612 345 678',
+    dni: 'ID Card',
+    passport: 'Passport',
+    nie: 'NIE',
+    documentPhoto: 'Document Photo',
+    takePhoto: 'Take photo',
+    changePhoto: 'Change photo',
+    mainGuest: 'Mark as main guest',
+    principal: 'Main',
+    addGuest: 'Add Guest',
+    guests: 'Guests',
+    noGuests: 'No guests added',
+    saveRegistration: 'Save Registration',
+    signature: 'Guest Signature',
+    signaturePlaceholder: 'Sign here',
+    clear: 'Clear',
+    stayDates: 'Stay Dates',
+    checkInDate: 'Check-in Date',
+    checkOutDate: 'Check-out Date',
+    selectDate: 'Select date',
+    checkIn: 'Check-in',
+    checkOut: 'Check-out',
+    status: 'Status',
+    active: 'Active',
+    checkedOut: 'Finished',
+    checkout: 'Check-out',
+    registrationDetails: 'Registration Details',
+    adminPanel: 'Admin Panel',
+    noRegistrations: 'No registrations yet',
+    errorLoadingApartments: 'Error loading apartments',
+    errorLoadingRegistrations: 'Error loading registrations',
+    guestAdded: 'Guest added',
+    registrationSaved: 'Registration saved successfully',
+    errorSaving: 'Error saving registration',
+    selectApartmentError: 'Select an apartment',
+    addAtLeastOneGuest: 'Add at least one guest',
+    signatureRequired: 'Signature is required',
+    checkoutDone: 'Check-out completed successfully',
+    checkoutError: 'Error performing check-out',
+    registrationDeleted: 'Registration deleted successfully',
+    deleteError: 'Error deleting registration',
+    deleteConfirmTitle: 'Delete registration?',
+    deleteConfirmDescription: 'This action cannot be undone.',
+    cancel: 'Cancel',
+    delete: 'Delete',
+  }
+}
+
+type Language = 'es' | 'en'
+type View = 'selection' | 'registration' | 'signature' | 'admin'
 
 interface Apartment {
   id: string
@@ -91,11 +231,10 @@ const guestSchema = z.object({
 })
 
 type GuestFormData = z.infer<typeof guestSchema>
-type View = 'selection' | 'registration' | 'signature' | 'admin'
 
 export default function Page() {
   const [language, setLanguage] = useState<Language>('es')
-  const t = translations[language]
+  const tr = t[language]
   const dateLocale = language === 'es' ? esLocale : enUS
 
   const [view, setView] = useState<View>('selection')
@@ -129,12 +268,7 @@ export default function Page() {
 
   useEffect(() => { fetchApartments() }, [])
   useEffect(() => { if (view === 'admin') fetchRegistrations() }, [view])
-
-  useEffect(() => {
-    if (view === 'signature' && canvasRef.current) {
-      initCanvas()
-    }
-  }, [view])
+  useEffect(() => { if (view === 'signature') setTimeout(initCanvas, 100) }, [view])
 
   const initCanvas = () => {
     const canvas = canvasRef.current
@@ -201,9 +335,7 @@ export default function Page() {
     setIsDrawing(false)
   }
 
-  const clearSignature = () => {
-    initCanvas()
-  }
+  const clearSignature = () => initCanvas()
 
   const fetchApartments = async () => {
     setIsDataLoading(true)
@@ -213,7 +345,7 @@ export default function Page() {
         const data = await res.json()
         setApartments(Array.isArray(data) ? data : [])
       }
-    } catch { toast.error(t.errorLoadingApartments) }
+    } catch { toast.error(tr.errorLoadingApartments) }
     finally { setIsDataLoading(false) }
   }
 
@@ -225,7 +357,7 @@ export default function Page() {
         const data = await res.json()
         setRegistrations(Array.isArray(data) ? data : [])
       }
-    } catch { toast.error(t.errorLoadingRegistrations) }
+    } catch { toast.error(tr.errorLoadingRegistrations) }
     finally { setIsDataLoading(false) }
   }
 
@@ -247,7 +379,7 @@ export default function Page() {
     setGuests([...guests, newGuest])
     setPhotoPreview(null)
     reset({ firstName: '', lastName: '', documentType: 'DNI', documentNumber: '', isMainGuest: false })
-    toast.success(t.guestAdded)
+    toast.success(tr.guestAdded)
   }
 
   const removeGuest = (i: number) => {
@@ -257,13 +389,13 @@ export default function Page() {
   }
 
   const goToSignature = () => {
-    if (!selectedApartment) { toast.error(t.selectApartmentError); return }
-    if (guests.length === 0) { toast.error(t.addAtLeastOneGuest); return }
+    if (!selectedApartment) { toast.error(tr.selectApartmentError); return }
+    if (guests.length === 0) { toast.error(tr.addAtLeastOneGuest); return }
     setView('signature')
   }
 
   const handleSaveRegistration = async () => {
-    if (!signature) { toast.error(t.signatureRequired); return }
+    if (!signature) { toast.error(tr.signatureRequired); return }
     setIsLoading(true)
     try {
       const res = await fetch('/api/registrations', {
@@ -278,12 +410,12 @@ export default function Page() {
         })
       })
       if (!res.ok) throw new Error()
-      toast.success(t.registrationSaved)
+      toast.success(tr.registrationSaved)
       setView('selection')
       setGuests([])
       setSelectedApartment(null)
       setSignature(null)
-    } catch { toast.error(t.errorSaving) }
+    } catch { toast.error(tr.errorSaving) }
     finally { setIsLoading(false) }
   }
 
@@ -295,10 +427,10 @@ export default function Page() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'checked_out' })
       })
-      toast.success(t.checkoutDone)
+      toast.success(tr.checkoutDone)
       setShowDetailsModal(false)
       fetchRegistrations()
-    } catch { toast.error(t.checkoutError) }
+    } catch { toast.error(tr.checkoutError) }
     finally { setIsLoading(false) }
   }
 
@@ -307,11 +439,11 @@ export default function Page() {
     setIsLoading(true)
     try {
       await fetch(`/api/registrations/${regToDelete}`, { method: 'DELETE' })
-      toast.success(t.registrationDeleted)
+      toast.success(tr.registrationDeleted)
       setShowDeleteDialog(false)
       setRegToDelete(null)
       fetchRegistrations()
-    } catch { toast.error(t.deleteError) }
+    } catch { toast.error(tr.deleteError) }
     finally { setIsLoading(false) }
   }
 
@@ -329,69 +461,45 @@ export default function Page() {
     setShowPhotoModal(true)
   }
 
-  const exportRegistrationAsImage = async (reg: Registration) => {
+  const exportAsImage = async (reg: Registration) => {
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    const width = 800
-    let y = 40
-    let height = 200 + reg.guests.length * 100
-    if (reg.signature) height += 150
-
-    canvas.width = width
-    canvas.height = height
+    canvas.width = 800
+    canvas.height = 400
 
     ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, width, height)
-
+    ctx.fillRect(0, 0, 800, 400)
     ctx.fillStyle = '#166534'
-    ctx.fillRect(0, 0, width, 60)
+    ctx.fillRect(0, 0, 800, 60)
     ctx.fillStyle = '#ffffff'
     ctx.font = 'bold 24px Arial'
-    ctx.fillText(t.hotelName, 20, 40)
+    ctx.fillText(tr.hotelName, 20, 40)
 
-    ctx.fillStyle = '#166534'
-    ctx.font = 'bold 20px Arial'
-    y = 100
-    ctx.fillText(t.registrationDetails, 20, y)
-
-    ctx.fillStyle = '#374151'
-    ctx.font = '16px Arial'
-    y += 35
-    ctx.fillText(`${t.apartment}: ${translateApartmentName(reg.apartment.name, language)}`, 20, y)
-    y += 28
-    ctx.fillText(`${t.checkIn}: ${format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })}`, 20, y)
-    y += 28
-    ctx.fillText(`${t.status}: ${reg.status === 'active' ? t.active : t.checkedOut}`, 20, y)
-
-    y += 40
     ctx.fillStyle = '#166534'
     ctx.font = 'bold 18px Arial'
-    ctx.fillText(t.guests + ':', 20, y)
+    ctx.fillText(tr.registrationDetails, 20, 100)
 
     ctx.fillStyle = '#374151'
     ctx.font = '14px Arial'
+    ctx.fillText(`${tr.apartment}: ${reg.apartment.name}`, 20, 140)
+    ctx.fillText(`${tr.checkIn}: ${format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })}`, 20, 170)
+    ctx.fillText(`${tr.status}: ${reg.status === 'active' ? tr.active : tr.checkedOut}`, 20, 200)
+    ctx.fillText(`${tr.guests}:`, 20, 240)
 
-    for (const guest of reg.guests) {
-      y += 30
-      ctx.fillText(`${guest.firstName} ${guest.lastName} (${guest.documentType}: ${guest.documentNumber})`, 30, y)
+    let y = 270
+    for (const g of reg.guests) {
+      ctx.fillText(`${g.firstName} ${g.lastName} (${g.documentType}: ${g.documentNumber})`, 40, y)
+      y += 25
     }
 
     if (reg.signature) {
-      y += 40
-      ctx.fillStyle = '#166534'
-      ctx.font = 'bold 18px Arial'
-      ctx.fillText(t.signature + ':', 20, y)
-
-      const sigImg = new window.Image()
-      sigImg.src = reg.signature
-      await new Promise<void>((resolve) => {
-        sigImg.onload = () => resolve()
-        sigImg.onerror = () => resolve()
-      })
-      if (sigImg.complete && sigImg.naturalWidth > 0) {
-        ctx.drawImage(sigImg, 20, y + 10, 250, 80)
+      const img = new window.Image()
+      img.src = reg.signature
+      await new Promise<void>((r) => { img.onload = () => r(); img.onerror = () => r() })
+      if (img.complete && img.naturalWidth > 0) {
+        ctx.drawImage(img, 20, y + 10, 200, 60)
       }
     }
 
@@ -399,7 +507,6 @@ export default function Page() {
     link.download = `registro-${format(new Date(reg.checkInDate), 'yyyy-MM-dd')}.png`
     link.href = canvas.toDataURL('image/png')
     link.click()
-    toast.success(language === 'es' ? 'Exportado correctamente' : 'Exported successfully')
   }
 
   const documentType = watch('documentType')
@@ -408,7 +515,7 @@ export default function Page() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 flex flex-col">
       <Toaster position="top-center" richColors />
-      
+
       <header className="bg-gradient-to-r from-green-800 to-green-700 text-white shadow-lg">
         <div className="max-w-7xl mx-auto px-3 py-3 sm:px-4 sm:py-4 flex items-center justify-between">
           <div className="flex items-center gap-2 sm:gap-4">
@@ -416,8 +523,8 @@ export default function Page() {
               <Building2 className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight">{t.hotelName}</h1>
-              <p className="text-xs sm:text-sm text-green-100 hidden sm:block">{t.hotelSubtitle}</p>
+              <h1 className="text-lg sm:text-xl md:text-2xl font-bold tracking-tight">{tr.hotelName}</h1>
+              <p className="text-xs sm:text-sm text-green-100 hidden sm:block">{tr.hotelSubtitle}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -433,13 +540,12 @@ export default function Page() {
             </Select>
             {view !== 'selection' && (
               <Button variant="ghost" onClick={() => setView('selection')} className="text-white hover:bg-white/10 px-2 sm:px-4">
-                <HomeIcon className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">{t.home}</span>
+                {tr.home}
               </Button>
             )}
             <Button variant="ghost" onClick={() => setView('admin')} className="text-white hover:bg-white/10 px-2 sm:px-4">
               <ClipboardList className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">{t.admin}</span>
+              {tr.admin}
             </Button>
           </div>
         </div>
@@ -449,14 +555,14 @@ export default function Page() {
         {view === 'selection' && (
           <div>
             <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold text-green-800 mb-2">{t.welcome}</h2>
-              <p className="text-muted-foreground">{t.selectApartment}</p>
+              <h2 className="text-3xl font-bold text-green-800 mb-2">{tr.welcome}</h2>
+              <p className="text-muted-foreground">{tr.selectApartment}</p>
             </div>
             {isDataLoading ? (
               <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>
             ) : apartments.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-muted-foreground">{t.noApartments || 'No hay apartamentos'}</p>
+                <p className="text-muted-foreground">{tr.noApartments}</p>
                 <Button onClick={fetchApartments} className="mt-4">Reintentar</Button>
               </div>
             ) : (
@@ -468,7 +574,7 @@ export default function Page() {
                         <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-gradient-to-br from-green-600 to-green-800 flex items-center justify-center shadow-lg">
                           <Building2 className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
                         </div>
-                        <CardTitle className="text-lg sm:text-xl text-green-800 text-center">{translateApartmentName(apt.name, language)}</CardTitle>
+                        <CardTitle className="text-lg sm:text-xl text-green-800 text-center">{apt.name}</CardTitle>
                       </div>
                     </CardContent>
                   </Card>
@@ -481,7 +587,7 @@ export default function Page() {
         {view === 'registration' && (
           <div>
             <Button variant="ghost" onClick={() => setView('selection')} className="mb-6 text-green-700">
-              <ArrowLeft className="h-4 w-4 mr-2" />{t.backToApartments}
+              <ArrowLeft className="h-4 w-4 mr-2" />{tr.backToApartments}
             </Button>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">
@@ -490,62 +596,62 @@ export default function Page() {
                     <CardTitle className="text-green-800 flex items-center gap-2">
                       <Building2 className="h-5 w-5" />{selectedApartment?.name}
                     </CardTitle>
-                    <CardDescription>{t.addGuestData}</CardDescription>
+                    <CardDescription>{tr.addGuestData}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <form onSubmit={handleSubmit(handleAddGuest)} className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>{t.firstName} *</Label>
-                          <Input {...register('firstName')} placeholder={t.firstNamePlaceholder} className="border-green-200" />
+                          <Label>{tr.firstName} *</Label>
+                          <Input {...register('firstName')} placeholder={tr.firstNamePlaceholder} className="border-green-200" />
                           {errors.firstName && <p className="text-sm text-red-500">{errors.firstName.message}</p>}
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.lastName} *</Label>
-                          <Input {...register('lastName')} placeholder={t.lastNamePlaceholder} className="border-green-200" />
+                          <Label>{tr.lastName} *</Label>
+                          <Input {...register('lastName')} placeholder={tr.lastNamePlaceholder} className="border-green-200" />
                           {errors.lastName && <p className="text-sm text-red-500">{errors.lastName.message}</p>}
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>{t.documentType}</Label>
+                          <Label>{tr.documentType}</Label>
                           <Select value={documentType} onValueChange={(v) => setValue('documentType', v)}>
                             <SelectTrigger className="border-green-200"><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="DNI">{t.dni}</SelectItem>
-                              <SelectItem value="Pasaporte">{t.passport}</SelectItem>
-                              <SelectItem value="NIE">{t.nie}</SelectItem>
+                              <SelectItem value="DNI">{tr.dni}</SelectItem>
+                              <SelectItem value="Pasaporte">{tr.passport}</SelectItem>
+                              <SelectItem value="NIE">{tr.nie}</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.documentNumber} *</Label>
-                          <Input {...register('documentNumber')} placeholder={t.documentNumberPlaceholder} className="border-green-200" />
+                          <Label>{tr.documentNumber} *</Label>
+                          <Input {...register('documentNumber')} placeholder={tr.documentNumberPlaceholder} className="border-green-200" />
                           {errors.documentNumber && <p className="text-sm text-red-500">{errors.documentNumber.message}</p>}
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>{t.nationality}</Label>
-                          <Input {...register('nationality')} placeholder={t.nationalityPlaceholder} className="border-green-200" />
+                          <Label>{tr.nationality}</Label>
+                          <Input {...register('nationality')} placeholder={tr.nationalityPlaceholder} className="border-green-200" />
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>{t.email}</Label>
-                          <Input type="email" {...register('email')} placeholder={t.emailPlaceholder} className="border-green-200" />
+                          <Label>{tr.email}</Label>
+                          <Input type="email" {...register('email')} placeholder={tr.emailPlaceholder} className="border-green-200" />
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.phone}</Label>
-                          <Input {...register('phone')} placeholder={t.phonePlaceholder} className="border-green-200" />
+                          <Label>{tr.phone}</Label>
+                          <Input {...register('phone')} placeholder={tr.phonePlaceholder} className="border-green-200" />
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <Label>{t.documentPhoto}</Label>
+                        <Label>{tr.documentPhoto}</Label>
                         <div className="flex items-center gap-4">
                           <input ref={photoInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoChange} className="hidden" />
                           <Button type="button" variant="outline" onClick={() => photoInputRef.current?.click()}>
-                            <Camera className="h-4 w-4 mr-2" />{photoPreview ? t.changePhoto : t.takePhoto}
+                            <Camera className="h-4 w-4 mr-2" />{photoPreview ? tr.changePhoto : tr.takePhoto}
                           </Button>
                           {photoPreview && (
                             <div className="relative">
@@ -557,10 +663,10 @@ export default function Page() {
                       </div>
                       <div className="flex items-center space-x-2">
                         <Checkbox id="isMainGuest" checked={isMainGuest} onCheckedChange={(c) => setValue('isMainGuest', c === true)} />
-                        <Label htmlFor="isMainGuest" className="cursor-pointer">{t.mainGuest}</Label>
+                        <Label htmlFor="isMainGuest" className="cursor-pointer">{tr.mainGuest}</Label>
                       </div>
                       <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white">
-                        <Plus className="h-4 w-4 mr-2" />{t.addGuest}
+                        <Plus className="h-4 w-4 mr-2" />{tr.addGuest}
                       </Button>
                     </form>
                   </CardContent>
@@ -570,13 +676,13 @@ export default function Page() {
                 <Card className="bg-white/80 backdrop-blur sticky top-4">
                   <CardHeader>
                     <CardTitle className="text-green-800 flex items-center justify-between">
-                      <span>{t.guests}</span>
+                      <span>{tr.guests}</span>
                       <Badge variant="secondary">{guests.length}</Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     {guests.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-8">{t.noGuests}</p>
+                      <p className="text-center text-muted-foreground py-8">{tr.noGuests}</p>
                     ) : (
                       <ScrollArea className="max-h-96">
                         <div className="space-y-3">
@@ -585,7 +691,7 @@ export default function Page() {
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
                                   <span className="font-medium text-green-800">{g.firstName} {g.lastName}</span>
-                                  {g.isMainGuest && <Badge className="bg-amber-500 text-white text-xs">{t.principal}</Badge>}
+                                  {g.isMainGuest && <Badge className="bg-amber-500 text-white text-xs">{tr.principal}</Badge>}
                                 </div>
                                 <p className="text-sm text-muted-foreground">{g.documentType}: {g.documentNumber}</p>
                               </div>
@@ -599,7 +705,7 @@ export default function Page() {
                     )}
                     <Separator className="my-4" />
                     <Button onClick={goToSignature} disabled={guests.length === 0} className="w-full bg-green-600 hover:bg-green-700 text-white">
-                      {t.saveRegistration}
+                      {tr.saveRegistration}
                     </Button>
                   </CardContent>
                 </Card>
@@ -611,68 +717,50 @@ export default function Page() {
         {view === 'signature' && (
           <div>
             <Button variant="ghost" onClick={() => setView('registration')} className="mb-6 text-green-700">
-              <ArrowLeft className="h-4 w-4 mr-2" />{t.backToApartments}
+              <ArrowLeft className="h-4 w-4 mr-2" />{tr.backToApartments}
             </Button>
             <Card className="max-w-2xl mx-auto bg-white/80 backdrop-blur">
               <CardHeader>
-                <CardTitle className="text-green-800">{t.signature}</CardTitle>
-                <CardDescription>{selectedApartment?.name} - {guests.length} {t.guests.toLowerCase()}</CardDescription>
+                <CardTitle className="text-green-800">{tr.signature}</CardTitle>
+                <CardDescription>{selectedApartment?.name} - {guests.length} {tr.guests.toLowerCase()}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
                   <h4 className="font-medium text-amber-800 mb-4 flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />{t.stayDates}
+                    <Calendar className="h-4 w-4" />{tr.stayDates}
                   </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-amber-700">{t.checkInDate} *</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" className="w-full justify-start border-amber-300 text-left font-normal">
-                            <Calendar className="h-4 w-4 mr-2" />{format(checkInDate, 'PPP', { locale: dateLocale })}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <CalendarComponent mode="single" selected={checkInDate} onSelect={(d) => d && setCheckInDate(d)} />
-                        </PopoverContent>
-                      </Popover>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-amber-700">{tr.checkInDate} *</Label>
+                      <Input type="date" value={format(checkInDate, 'yyyy-MM-dd')} onChange={(e) => setCheckInDate(new Date(e.target.value))} className="mt-2 border-amber-300" />
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-amber-700">{t.checkOutDate}</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" className="w-full justify-start border-amber-300 text-left font-normal">
-                            <Calendar className="h-4 w-4 mr-2" />{checkOutDate ? format(checkOutDate, 'PPP', { locale: dateLocale }) : t.selectDate}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <CalendarComponent mode="single" selected={checkOutDate} onSelect={setCheckOutDate} />
-                        </PopoverContent>
-                      </Popover>
+                    <div>
+                      <Label className="text-amber-700">{tr.checkOutDate}</Label>
+                      <Input type="date" value={checkOutDate ? format(checkOutDate, 'yyyy-MM-dd') : ''} onChange={(e) => e.target.value && setCheckOutDate(new Date(e.target.value))} className="mt-2 border-amber-300" />
                     </div>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-base font-semibold text-green-800">{t.signature}</Label>
+                  <Label className="text-base font-semibold text-green-800">{tr.signature}</Label>
                   <div className="border-2 border-green-300 rounded-lg overflow-hidden bg-white relative">
-                    <canvas 
-                      ref={canvasRef} 
+                    <canvas
+                      ref={canvasRef}
                       className="w-full h-40 cursor-crosshair touch-none"
-                      onMouseDown={startDrawing} 
-                      onMouseMove={draw} 
-                      onMouseUp={stopDrawing} 
+                      onMouseDown={startDrawing}
+                      onMouseMove={draw}
+                      onMouseUp={stopDrawing}
                       onMouseLeave={stopDrawing}
-                      onTouchStart={startDrawing} 
-                      onTouchMove={draw} 
-                      onTouchEnd={stopDrawing} 
+                      onTouchStart={startDrawing}
+                      onTouchMove={draw}
+                      onTouchEnd={stopDrawing}
                     />
-                    {!hasSignature && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="text-gray-300 italic">{t.signaturePlaceholder}</span></div>}
+                    {!hasSignature && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="text-gray-300 italic">{tr.signaturePlaceholder}</span></div>}
                   </div>
-                  <Button type="button" variant="outline" size="sm" onClick={clearSignature}><RotateCcw className="h-4 w-4 mr-2" />{t.clear}</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={clearSignature}><RotateCcw className="h-4 w-4 mr-2" />{tr.clear}</Button>
                 </div>
                 <Button onClick={handleSaveRegistration} disabled={isLoading || !hasSignature} className="w-full bg-green-600 hover:bg-green-700 text-white">
                   {isLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  {t.saveRegistration}
+                  {tr.saveRegistration}
                 </Button>
               </CardContent>
             </Card>
@@ -683,9 +771,9 @@ export default function Page() {
           <div>
             <div className="flex justify-between items-center mb-6">
               <Button variant="ghost" onClick={() => setView('selection')} className="text-green-700">
-                <ArrowLeft className="h-4 w-4 mr-2" />{t.backToApartments}
+                <ArrowLeft className="h-4 w-4 mr-2" />{tr.backToApartments}
               </Button>
-              <h2 className="text-2xl font-bold text-green-800">{t.adminPanel}</h2>
+              <h2 className="text-2xl font-bold text-green-800">{tr.adminPanel}</h2>
             </div>
             {isDataLoading ? (
               <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>
@@ -693,7 +781,7 @@ export default function Page() {
               <Card className="bg-white/80 backdrop-blur">
                 <CardContent className="p-12 text-center">
                   <ClipboardList className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">{t.noRegistrations}</p>
+                  <p className="text-muted-foreground">{tr.noRegistrations}</p>
                 </CardContent>
               </Card>
             ) : (
@@ -703,15 +791,15 @@ export default function Page() {
                     <CardContent className="p-4">
                       <div className="flex justify-between items-center">
                         <div>
-                          <Badge className={reg.status === 'active' ? 'bg-green-600' : ''}>{reg.status === 'active' ? t.active : t.checkedOut}</Badge>
-                          <p className="text-sm mt-2">{t.checkIn}: {format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })}</p>
-                          <p className="text-sm text-muted-foreground">{translateApartmentName(reg.apartment.name, language)} - {reg.guests.length} {t.guests.toLowerCase()}</p>
+                          <Badge className={reg.status === 'active' ? 'bg-green-600' : ''}>{reg.status === 'active' ? tr.active : tr.checkedOut}</Badge>
+                          <p className="text-sm mt-2">{tr.checkIn}: {format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })}</p>
+                          <p className="text-sm text-muted-foreground">{reg.apartment.name} - {reg.guests.length} {tr.guests.toLowerCase()}</p>
                         </div>
                         <div className="flex gap-2">
                           <Button size="sm" variant="outline" onClick={() => { setSelectedReg(reg); setShowDetailsModal(true) }}>
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => exportRegistrationAsImage(reg)} className="border-green-500 text-green-700">
+                          <Button size="sm" variant="outline" onClick={() => exportAsImage(reg)} className="border-green-500 text-green-700">
                             <Download className="h-4 w-4" />
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => { setRegToDelete(reg.id); setShowDeleteDialog(true) }} className="border-red-500 text-red-700">
@@ -731,30 +819,24 @@ export default function Page() {
       <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{t.registrationDetails}</DialogTitle>
+            <DialogTitle>{tr.registrationDetails}</DialogTitle>
           </DialogHeader>
           {selectedReg && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Badge className={selectedReg.status === 'active' ? 'bg-green-600' : ''}>{selectedReg.status === 'active' ? t.active : t.checkedOut}</Badge>
-                <Button size="sm" variant="outline" onClick={() => exportRegistrationAsImage(selectedReg)} className="border-green-500 text-green-700">
-                  <Download className="h-4 w-4 mr-2" />
-                  {language === 'es' ? 'Exportar' : 'Export'}
-                </Button>
-              </div>
+              <Badge className={selectedReg.status === 'active' ? 'bg-green-600' : ''}>{selectedReg.status === 'active' ? tr.active : tr.checkedOut}</Badge>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-muted-foreground">{t.apartment}</Label>
-                  <p className="font-medium">{translateApartmentName(selectedReg.apartment.name, language)}</p>
+                  <Label className="text-muted-foreground">{tr.apartment}</Label>
+                  <p className="font-medium">{selectedReg.apartment.name}</p>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">{t.checkIn}</Label>
+                  <Label className="text-muted-foreground">{tr.checkIn}</Label>
                   <p className="font-medium">{format(new Date(selectedReg.checkInDate), 'PPP', { locale: dateLocale })}</p>
                 </div>
               </div>
               <Separator />
               <div>
-                <Label className="text-lg font-semibold">{t.guests}</Label>
+                <Label className="text-lg font-semibold">{tr.guests}</Label>
                 <div className="space-y-3 mt-2">
                   {selectedReg.guests.map((g, i) => (
                     <div key={i} className="p-3 bg-gray-50 rounded-lg">
@@ -762,7 +844,7 @@ export default function Page() {
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-green-800">{g.firstName} {g.lastName}</span>
-                            {g.isMainGuest && <Badge className="bg-amber-500 text-white text-xs">{t.principal}</Badge>}
+                            {g.isMainGuest && <Badge className="bg-amber-500 text-white text-xs">{tr.principal}</Badge>}
                           </div>
                           <p className="text-sm text-muted-foreground">{g.documentType}: {g.documentNumber}</p>
                         </div>
@@ -776,7 +858,7 @@ export default function Page() {
               </div>
               {selectedReg.signature && (
                 <div>
-                  <Label className="text-lg font-semibold">{t.signature}</Label>
+                  <Label className="text-lg font-semibold">{tr.signature}</Label>
                   <div className="mt-2 border rounded-lg p-2 bg-white">
                     <img src={selectedReg.signature} alt="Firma" className="max-h-32 mx-auto" />
                   </div>
@@ -784,7 +866,7 @@ export default function Page() {
               )}
               {selectedReg.status === 'active' && (
                 <Button onClick={() => handleCheckout(selectedReg.id)} disabled={isLoading} className="w-full bg-amber-500 hover:bg-amber-600 text-white">
-                  {t.checkout}
+                  {tr.checkout}
                 </Button>
               )}
             </div>
@@ -795,7 +877,7 @@ export default function Page() {
       <Dialog open={showPhotoModal} onOpenChange={setShowPhotoModal}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{t.documentPhoto}</DialogTitle>
+            <DialogTitle>{tr.documentPhoto}</DialogTitle>
           </DialogHeader>
           {selectedPhoto && (
             <div className="flex justify-center">
@@ -808,12 +890,12 @@ export default function Page() {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t.deleteConfirmTitle}</AlertDialogTitle>
-            <AlertDialogDescription>{t.deleteConfirmDescription}</AlertDialogDescription>
+            <AlertDialogTitle>{tr.deleteConfirmTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{tr.deleteConfirmDescription}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t.cancel}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">{t.delete}</AlertDialogAction>
+            <AlertDialogCancel>{tr.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">{tr.delete}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
