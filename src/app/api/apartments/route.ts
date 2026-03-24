@@ -5,6 +5,7 @@ export async function GET() {
   const tursoToken = process.env.TURSO_AUTH_TOKEN
 
   if (!tursoUrl || !tursoToken) {
+    console.log('APARTMENTS: Variables de entorno no configuradas')
     return NextResponse.json([])
   }
 
@@ -18,27 +19,32 @@ export async function GET() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        requests: [
-          { type: 'execute', stmt: { sql: 'SELECT id, name, description, capacity FROM Apartment' } },
-          { type: 'close' }
-        ]
+        requests: [{
+          type: 'execute',
+          stmt: { sql: 'SELECT id, name, description, capacity FROM Apartment' }
+        }, { type: 'close' }]
       })
     })
 
     const data = await response.json()
-    const rows = data.results?.[0]?.response?.result?.rows || []
+    const rows = data.results?.[0]?.response?.result?.rows
 
-    const apartments = rows.map((r: any) => ({
-      id: r[0]?.value || '',
-      name: r[1]?.value || '',
-      description: r[2]?.value || '',
-      capacity: parseInt(r[3]?.value) || 6,
+    if (!rows || rows.length === 0) {
+      return NextResponse.json([])
+    }
+
+    const apartments = rows.map((row: any[]) => ({
+      id: row[0],
+      name: row[1],
+      description: row[2],
+      capacity: parseInt(row[3]) || 6,
       _count: { registrations: 0 }
     }))
 
     return NextResponse.json(apartments)
 
   } catch (e) {
+    console.error('Error loading apartments:', e)
     return NextResponse.json([])
   }
 }
