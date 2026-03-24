@@ -18,21 +18,20 @@ export async function GET() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        requests: [{ type: 'execute', stmt: { sql: 'SELECT id, name, description, capacity FROM Apartment' } }, { type: 'close' }]
+        requests: [
+          { type: 'execute', stmt: { sql: 'SELECT id, name, description, capacity FROM Apartment' } },
+          { type: 'close' }
+        ]
       })
     })
 
     const data = await response.json()
-    const result = data.results?.[0]?.response?.result
+    const rows = data.results?.[0]?.response?.result?.rows || []
 
-    if (!result?.rows) {
-      return NextResponse.json([])
-    }
-
-    const apartments = result.rows.map((r: any) => ({
-      id: r[0]?.value,
-      name: r[1]?.value,
-      description: r[2]?.value,
+    const apartments = rows.map((r: any) => ({
+      id: r[0]?.value || '',
+      name: r[1]?.value || '',
+      description: r[2]?.value || '',
       capacity: parseInt(r[3]?.value) || 6,
       _count: { registrations: 0 }
     }))
@@ -40,6 +39,6 @@ export async function GET() {
     return NextResponse.json(apartments)
 
   } catch (e) {
-    return NextResponse.json([])
+    return NextResponse.json({ error: 'Error', details: String(e) }, { status: 500 })
   }
 }
