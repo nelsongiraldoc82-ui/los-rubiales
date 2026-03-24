@@ -19,7 +19,7 @@ export async function GET() {
       },
       body: JSON.stringify({
         requests: [
-          { type: 'execute', stmt: { sql: 'SELECT id, name, description, capacity FROM Apartment LIMIT 1' } },
+          { type: 'execute', stmt: { sql: 'SELECT id, name FROM Apartment LIMIT 1' } },
           { type: 'close' }
         ]
       })
@@ -28,12 +28,9 @@ export async function GET() {
     const data = await response.json()
 
     return NextResponse.json({
-      rawResponse: data,
-      resultsPath: data.results?.[0]?.response?.result,
-      rowsPath: data.results?.[0]?.response?.result?.rows,
-      firstRow: data.results?.[0]?.response?.result?.rows?.[0],
-      firstRowType: typeof data.results?.[0]?.response?.result?.rows?.[0],
-      firstRowKeys: data.results?.[0]?.response?.result?.rows?.[0] ? Object.keys(data.results?.[0]?.response?.result?.rows?.[0]) : null
+      rawData: data,
+      rows: data.results?.[0]?.response?.result?.rows,
+      firstRow: data.results?.[0]?.response?.result?.rows?.[0]
     })
 
   } catch (error) {
