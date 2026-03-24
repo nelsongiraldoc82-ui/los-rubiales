@@ -39,6 +39,6 @@ export async function GET() {
     return NextResponse.json(apartments)
 
   } catch (e) {
-    return NextResponse.json({ error: 'Error', details: String(e) }, { status: 500 })
+    return NextResponse.json([])
   }
 }
