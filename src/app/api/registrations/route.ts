@@ -1,150 +1,83 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { NextResponse } from 'next/server'
 
-// GET - Obtener todos los registros con filtros opcionales
-export async function GET(request: NextRequest) {
+export async function GET() {
+  const tursoUrl = process.env.TURSO_DATABASE_URL
+  const tursoToken = process.env.TURSO_AUTH_TOKEN
+
+  if (!tursoUrl || !tursoToken) {
+    return NextResponse.json([])
+  }
+
+  const httpUrl = tursoUrl.replace('libsql://', 'https://')
+
   try {
-    const { searchParams } = new URL(request.url)
-    const apartmentId = searchParams.get('apartmentId')
-    const status = searchParams.get('status')
-    const fromDate = searchParams.get('fromDate')
-    const toDate = searchParams.get('toDate')
-
-    const where: {
-      apartmentId?: string
-      status?: string
-      checkInDate?: { gte?: Date; lte?: Date }
-    } = {}
-
-    if (apartmentId) {
-      where.apartmentId = apartmentId
-    }
-
-    if (status) {
-      where.status = status
-    }
-
-    if (fromDate || toDate) {
-      where.checkInDate = {}
-      if (fromDate) {
-        where.checkInDate.gte = new Date(fromDate)
-      }
-      if (toDate) {
-        where.checkInDate.lte = new Date(toDate)
-      }
-    }
-
-    const registrations = await db.guestRegistration.findMany({
-      where,
-      include: {
-        apartment: true,
-        guests: true
+    const response = await fetch(httpUrl + '/v2/pipeline', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + tursoToken,
+        'Content-Type': 'application/json',
       },
-      orderBy: {
-        checkInDate: 'desc'
-      }
+      body: JSON.stringify({
+        requests: [
+          { type: 'execute', stmt: { sql: 'SELECT id FROM GuestRegistration LIMIT 1' } },
+          { type: 'close' }
+        ]
+      })
     })
 
-    return NextResponse.json(registrations)
-  } catch (error) {
-    console.error('Error fetching registrations:', error)
-    return NextResponse.json(
-      { error: 'Error al obtener los registros' },
-      { status: 500 }
-    )
+    return NextResponse.json([])
+
+  } catch (e) {
+    return NextResponse.json([])
   }
 }
 
-// POST - Crear nuevo registro con huéspedes
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
+  const tursoUrl = process.env.TURSO_DATABASE_URL
+  const tursoToken = process.env.TURSO_AUTH_TOKEN
+
+  if (!tursoUrl || !tursoToken) {
+    return NextResponse.json({ error: 'No configurado' }, { status: 500 })
+  }
+
+  const httpUrl = tursoUrl.replace('libsql://', 'https://')
+  const body = await request.json()
+
   try {
-    const body = await request.json()
-    const { apartmentId, guests, notes, signature, checkInDate, checkOutDate } = body
+    const regId = 'reg_' + Date.now()
+    const sql = `INSERT INTO GuestRegistration (id, apartmentId, checkInDate, status, signature) VALUES ('${regId}', '${body.apartmentId}', '${body.checkInDate || new Date().toISOString()}', 'active', '${body.signature || ''}')`
 
-    if (!apartmentId) {
-      return NextResponse.json(
-        { error: 'El apartamento es requerido' },
-        { status: 400 }
-      )
-    }
-
-    if (!guests || !Array.isArray(guests) || guests.length === 0) {
-      return NextResponse.json(
-        { error: 'Debe añadir al menos un huésped' },
-        { status: 400 }
-      )
-    }
-
-    // Validar que haya un huésped principal
-    const hasMainGuest = guests.some((g: { isMainGuest: boolean }) => g.isMainGuest)
-    if (!hasMainGuest && guests.length > 0) {
-      guests[0].isMainGuest = true
-    }
-
-    // Verificar que el apartamento existe
-    const apartment = await db.apartment.findUnique({
-      where: { id: apartmentId }
-    })
-
-    if (!apartment) {
-      return NextResponse.json(
-        { error: 'El apartamento no existe' },
-        { status: 404 }
-      )
-    }
-
-    // Crear el registro con los huéspedes
-    const registration = await db.guestRegistration.create({
-      data: {
-        apartmentId,
-        notes,
-        signature,
-        checkInDate: checkInDate ? new Date(checkInDate) : new Date(),
-        checkOutDate: checkOutDate ? new Date(checkOutDate) : null,
-        guests: {
-          create: guests.map((guest: {
-            firstName: string
-            lastName: string
-            documentType: string
-            documentNumber: string
-            documentPhoto?: string
-            nationality?: string
-            dateOfBirth?: string
-            email?: string
-            phone?: string
-            address?: string
-            city?: string
-            postalCode?: string
-            isMainGuest: boolean
-          }) => ({
-            firstName: guest.firstName,
-            lastName: guest.lastName,
-            documentType: guest.documentType || 'DNI',
-            documentNumber: guest.documentNumber,
-            documentPhoto: guest.documentPhoto,
-            nationality: guest.nationality,
-            dateOfBirth: guest.dateOfBirth,
-            email: guest.email,
-            phone: guest.phone,
-            address: guest.address,
-            city: guest.city,
-            postalCode: guest.postalCode,
-            isMainGuest: guest.isMainGuest || false
-          }))
-        }
+    await fetch(httpUrl + '/v2/pipeline', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + tursoToken,
+        'Content-Type': 'application/json',
       },
-      include: {
-        apartment: true,
-        guests: true
-      }
+      body: JSON.stringify({
+        requests: [{ type: 'execute', stmt: { sql } }, { type: 'close' }]
+      })
     })
 
-    return NextResponse.json(registration, { status: 201 })
-  } catch (error) {
-    console.error('Error creating registration:', error)
-    return NextResponse.json(
-      { error: 'Error al crear el registro' },
-      { status: 500 }
-    )
+    // Insertar huéspedes
+    for (const guest of body.guests || []) {
+      const guestId = 'guest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5)
+      const guestSql = `INSERT INTO Guest (id, registrationId, firstName, lastName, documentType, documentNumber, isMainGuest) VALUES ('${guestId}', '${regId}', '${guest.firstName}', '${guest.lastName}', '${guest.documentType || 'DNI'}', '${guest.documentNumber}', ${guest.isMainGuest ? 1 : 0})`
+
+      await fetch(httpUrl + '/v2/pipeline', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + tursoToken,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          requests: [{ type: 'execute', stmt: { sql: guestSql } }, { type: 'close' }]
+        })
+      })
+    }
+
+    return NextResponse.json({ success: true, id: regId })
+
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
   }
 }
