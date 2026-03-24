@@ -5,7 +5,6 @@ export async function GET() {
   const tursoToken = process.env.TURSO_AUTH_TOKEN
 
   if (!tursoUrl || !tursoToken) {
-    console.log('APARTMENTS: Variables de entorno no configuradas')
     return NextResponse.json([])
   }
 
@@ -19,10 +18,10 @@ export async function GET() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        requests: [{
-          type: 'execute',
-          stmt: { sql: 'SELECT id, name, description, capacity FROM Apartment' }
-        }, { type: 'close' }]
+        requests: [
+          { type: 'execute', stmt: { sql: 'SELECT id, name, description, capacity FROM Apartment' } },
+          { type: 'close' }
+        ]
       })
     })
 
@@ -43,8 +42,8 @@ export async function GET() {
 
     return NextResponse.json(apartments)
 
-  } catch (e) {
-    console.error('Error loading apartments:', e)
+  } catch (error) {
+    console.error('Error:', error)
     return NextResponse.json([])
   }
 }
