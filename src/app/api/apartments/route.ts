@@ -1,56 +1,45 @@
 import { NextResponse } from 'next/server'
 
-async function tursoQuery(sql: string) {
+export async function GET() {
   const tursoUrl = process.env.TURSO_DATABASE_URL
   const tursoToken = process.env.TURSO_AUTH_TOKEN
 
-  const httpUrl = tursoUrl!.replace('libsql://', 'https://')
+  if (!tursoUrl || !tursoToken) {
+    return NextResponse.json([])
+  }
 
-  const response = await fetch(`${httpUrl}/v2/pipeline`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${tursoToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      requests: [{
-        type: 'execute',
-        stmt: { sql }
-      }, { type: 'close' }]
-    })
-  })
+  const httpUrl = tursoUrl.replace('libsql://', 'https://')
 
-  const data = await response.json()
-  return data.results?.[0]?.response?.result
-}
-
-export async function GET() {
   try {
-    const result = await tursoQuery(`
-      SELECT a.id, a.name, a.description, a.capacity,
-        (SELECT COUNT(*) FROM GuestRegistration gr WHERE gr.apartmentId = a.id) as registrationCount
-      FROM Apartment a
-    `)
-
-    const apartments = result?.rows?.map((row: any[]) => {
-      const obj: any = {}
-      result.cols?.forEach((col: any, i: number) => {
-        obj[col.name] = row[i]?.value
+    const response = await fetch(httpUrl + '/v2/pipeline', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + tursoToken,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        requests: [{ type: 'execute', stmt: { sql: 'SELECT id, name, description, capacity FROM Apartment' } }, { type: 'close' }]
       })
-      return {
-        id: obj.id,
-        name: obj.name,
-        description: obj.description,
-        capacity: Number(obj.capacity) || 6,
-        _count: { registrations: Number(obj.registrationCount) || 0 }
-      }
-    }) || []
+    })
+
+    const data = await response.json()
+    const result = data.results?.[0]?.response?.result
+
+    if (!result?.rows) {
+      return NextResponse.json([])
+    }
+
+    const apartments = result.rows.map((r: any) => ({
+      id: r[0]?.value,
+      name: r[1]?.value,
+      description: r[2]?.value,
+      capacity: parseInt(r[3]?.value) || 6,
+      _count: { registrations: 0 }
+    }))
 
     return NextResponse.json(apartments)
-  } catch (error) {
-    return NextResponse.json({
-      error: 'Error al obtener apartamentos',
-      details: String(error)
-    }, { status: 500 })
+
+  } catch (e) {
+    return NextResponse.json([])
   }
 }
