@@ -10,12 +10,6 @@ function createPrismaClient() {
   const tursoUrl = process.env.TURSO_DATABASE_URL
   const tursoToken = process.env.TURSO_AUTH_TOKEN
   
-  // Log para depuración (solo en desarrollo)
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('TURSO_DATABASE_URL:', tursoUrl ? 'configurado' : 'NO configurado')
-    console.log('TURSO_AUTH_TOKEN:', tursoToken ? 'configurado' : 'NO configurado')
-  }
-
   // Si hay configuración de Turso, usar libsql
   if (tursoUrl && tursoToken) {
     try {
