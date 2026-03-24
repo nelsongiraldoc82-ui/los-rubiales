@@ -18,7 +18,10 @@ export async function GET() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        requests: [{ type: 'execute', stmt: { sql: 'SELECT id, name, description, capacity FROM Apartment' } }, { type: 'close' }]
+        requests: [
+          { type: 'execute', stmt: { sql: 'SELECT id, name, description, capacity FROM Apartment' } },
+          { type: 'close' }
+        ]
       })
     })
 
@@ -29,16 +32,19 @@ export async function GET() {
       return NextResponse.json([])
     }
 
-    const apartments = rows.map((row: any[]) => ({
-      id: row[0],
-      name: row[1],
-      description: row[2],
-      capacity: parseInt(row[3]) || 6,
+    // Turso devuelve objetos con {type, value}
+    const apartments = rows.map((row: any) => ({
+      id: row.id?.value || row.id,
+      name: row.name?.value || row.name,
+      description: row.description?.value || row.description,
+      capacity: row.capacity?.value || row.capacity || 6,
       _count: { registrations: 0 }
     }))
 
     return NextResponse.json(apartments)
+
   } catch (error) {
+    console.error('Error:', error)
     return NextResponse.json([])
   }
 }
