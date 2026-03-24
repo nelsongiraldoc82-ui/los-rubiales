@@ -32,12 +32,18 @@ export async function GET() {
       return NextResponse.json([])
     }
 
-    // Turso devuelve objetos con {type, value}
+    // Función para extraer valor de Turso
+    const getValue = (val: any) => {
+      if (val === null || val === undefined) return null
+      if (typeof val === 'object' && val.value !== undefined) return val.value
+      return val
+    }
+
     const apartments = rows.map((row: any) => ({
-      id: row.id?.value || row.id,
-      name: row.name?.value || row.name,
-      description: row.description?.value || row.description,
-      capacity: row.capacity?.value || row.capacity || 6,
+      id: getValue(row.id),
+      name: getValue(row.name),
+      description: getValue(row.description),
+      capacity: getValue(row.capacity) || 6,
       _count: { registrations: 0 }
     }))
 
