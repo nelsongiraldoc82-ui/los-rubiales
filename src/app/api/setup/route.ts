@@ -5,12 +5,12 @@ export async function GET() {
   const tursoToken = process.env.TURSO_AUTH_TOKEN
 
   if (!tursoUrl || !tursoToken) {
-    return NextResponse.json({ error: 'Variables no configuradas' })
+    return NextResponse.json({ error: 'Variables no configuradas' }, { status: 500 })
   }
 
   const httpUrl = tursoUrl.replace('libsql://', 'https://')
 
-  async function query(sql: string) {
+  async function executeSql(sql: string) {
     const response = await fetch(httpUrl + '/v2/pipeline', {
       method: 'POST',
       headers: {
@@ -18,41 +18,69 @@ export async function GET() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        requests: [{ type: 'execute', stmt: { sql: sql } }, { type: 'close' }]
+        requests: [
+          { type: 'execute', stmt: { sql } },
+          { type: 'close' }
+        ]
       })
     })
-    const data = await response.json()
-    return data.results?.[0]?.response?.result
+    return response
   }
 
   try {
-    // Crear tablas
-    await query('CREATE TABLE IF NOT EXISTS Apartment (id TEXT PRIMARY KEY, name TEXT UNIQUE, description TEXT, capacity INTEGER, createdAt TEXT, updatedAt TEXT)')
-    await query('CREATE TABLE IF NOT EXISTS GuestRegistration (id TEXT PRIMARY KEY, apartmentId TEXT, checkInDate TEXT, checkOutDate TEXT, status TEXT, notes TEXT, signature TEXT, createdAt TEXT, updatedAt TEXT)')
-    await query('CREATE TABLE IF NOT EXISTS Guest (id TEXT PRIMARY KEY, registrationId TEXT, firstName TEXT, lastName TEXT, documentType TEXT, documentNumber TEXT, documentPhoto TEXT, nationality TEXT, dateOfBirth TEXT, email TEXT, phone TEXT, address TEXT, city TEXT, postalCode TEXT, isMainGuest INTEGER)')
+    // Crear tabla Apartment
+    await executeSql(`
+      CREATE TABLE IF NOT EXISTS Apartment (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        capacity INTEGER DEFAULT 6
+      )
+    `)
 
-    // Crear los 3 apartamentos (INSERT OR IGNORE evita duplicados)
-    const t = Date.now()
-    await query("INSERT OR IGNORE INTO Apartment VALUES ('apt1_" + t + "', 'Apartamento 1', 'Apartamento rural Los Rubiales', 6, datetime('now'), datetime('now'))")
-    await query("INSERT OR IGNORE INTO Apartment VALUES ('apt2_" + t + "', 'Apartamento 2', 'Apartamento rural Los Rubiales', 6, datetime('now'), datetime('now'))")
-    await query("INSERT OR IGNORE INTO Apartment VALUES ('apt3_" + t + "', 'Apartamento 3', 'Apartamento rural Los Rubiales', 6, datetime('now'), datetime('now'))")
+    // Crear tabla GuestRegistration
+    await executeSql(`
+      CREATE TABLE IF NOT EXISTS GuestRegistration (
+        id TEXT PRIMARY KEY,
+        apartmentId TEXT NOT NULL,
+        checkInDate TEXT NOT NULL,
+        checkOutDate TEXT,
+        status TEXT DEFAULT 'active',
+        signature TEXT,
+        notes TEXT
+      )
+    `)
 
-    // Obtener todos los apartamentos
-    const result = await query('SELECT id, name, description, capacity FROM Apartment')
-    const apartments = result?.rows?.map((r: any) => ({
-      id: r[0]?.value,
-      name: r[1]?.value,
-      description: r[2]?.value,
-      capacity: r[3]?.value
-    })) || []
+    // Crear tabla Guest
+    await executeSql(`
+      CREATE TABLE IF NOT EXISTS Guest (
+        id TEXT PRIMARY KEY,
+        registrationId TEXT NOT NULL,
+        firstName TEXT NOT NULL,
+        lastName TEXT NOT NULL,
+        documentType TEXT DEFAULT 'DNI',
+        documentNumber TEXT NOT NULL,
+        documentPhoto TEXT,
+        nationality TEXT,
+        email TEXT,
+        phone TEXT,
+        isMainGuest INTEGER DEFAULT 0
+      )
+    `)
+
+    // Insertar apartamentos
+    await executeSql(`INSERT OR IGNORE INTO Apartment (id, name, description, capacity) VALUES ('apt_1', 'Apartamento 1', 'Apartamento para 6 personas', 6)`)
+    await executeSql(`INSERT OR IGNORE INTO Apartment (id, name, description, capacity) VALUES ('apt_2', 'Apartamento 2', 'Apartamento para 6 personas', 6)`)
+    await executeSql(`INSERT OR IGNORE INTO Apartment (id, name, description, capacity) VALUES ('apt_3', 'Apartamento 3', 'Apartamento para 6 personas', 6)`)
 
     return NextResponse.json({ 
       success: true, 
-      message: 'Base de datos configurada correctamente',
-      apartments 
+      message: 'Base de datos inicializada correctamente con 3 apartamentos' 
     })
 
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || String(e) }, { status: 500 })
+  } catch (error) {
+    return NextResponse.json({ 
+      error: 'Error: ' + String(error) 
+    }, { status: 500 })
   }
 }
