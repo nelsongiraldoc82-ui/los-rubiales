@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -14,7 +13,6 @@ import {
   Plus,
   Trash2,
   Camera,
-  Save,
   X,
   Eye,
   Calendar,
@@ -23,8 +21,7 @@ import {
   RotateCcw,
   Globe,
   ClipboardList,
-  Download,
-  FileImage
+  Download
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -56,7 +53,6 @@ interface Apartment {
   name: string
   description?: string | null
   capacity?: number
-  _count?: { registrations: number }
 }
 
 interface Guest {
@@ -83,141 +79,29 @@ interface Registration {
   signature?: string | null
 }
 
-const createGuestSchema = (t: typeof translations.es) => z.object({
-  firstName: z.string().min(1, t.firstNameRequired),
-  lastName: z.string().min(1, t.lastNameRequired),
+const guestSchema = z.object({
+  firstName: z.string().min(1, 'Nombre requerido'),
+  lastName: z.string().min(1, 'Apellidos requeridos'),
   documentType: z.string().default('DNI'),
-  documentNumber: z.string().min(1, t.documentNumberRequired),
-  documentPhoto: z.string().optional(),
+  documentNumber: z.string().min(1, 'Número requerido'),
   nationality: z.string().optional(),
   email: z.string().optional(),
   phone: z.string().optional(),
   isMainGuest: z.boolean().default(false)
 })
 
-type GuestFormData = z.infer<ReturnType<typeof createGuestSchema>>
+type GuestFormData = z.infer<typeof guestSchema>
 type View = 'selection' | 'registration' | 'signature' | 'admin'
-
-function SignatureCanvas({ onSignatureChange, label, clearLabel, placeholder }: {
-  onSignatureChange: (s: string | null) => void
-  label: string
-  clearLabel: string
-  placeholder: string
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [isDrawing, setIsDrawing] = useState(false)
-  const [hasSig, setHasSig] = useState(false)
-
-  useEffect(() => {
-    const c = canvasRef.current
-    if (!c) return
-    c.width = c.offsetWidth || 300
-    c.height = 150
-    const ctx = c.getContext('2d')
-    if (ctx) {
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, c.width, c.height)
-      ctx.strokeStyle = '#e5e7eb'
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(20, c.height - 30)
-      ctx.lineTo(c.width - 20, c.height - 30)
-      ctx.stroke()
-      ctx.strokeStyle = '#1e40af'
-      ctx.lineWidth = 3.5
-      ctx.lineCap = 'round'
-      ctx.lineJoin = 'round'
-    }
-  }, [])
-
-  const getCoords = (e: React.MouseEvent | React.TouchEvent) => {
-    const c = canvasRef.current
-    if (!c) return null
-    const rect = c.getBoundingClientRect()
-    const scaleX = c.width / rect.width
-    const scaleY = c.height / rect.height
-    const touch = 'touches' in e ? e.touches[0] : e
-    return { x: (touch.clientX - rect.left) * scaleX, y: (touch.clientY - rect.top) * scaleY }
-  }
-
-  const start = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault()
-    const coords = getCoords(e)
-    if (!coords) return
-    setIsDrawing(true)
-    const ctx = canvasRef.current?.getContext('2d')
-    if (ctx) { ctx.beginPath(); ctx.moveTo(coords.x, coords.y) }
-  }
-
-  const draw = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing) return
-    e.preventDefault()
-    const coords = getCoords(e)
-    if (!coords) return
-    const ctx = canvasRef.current?.getContext('2d')
-    if (ctx) { ctx.lineTo(coords.x, coords.y); ctx.stroke(); ctx.beginPath(); ctx.moveTo(coords.x, coords.y) }
-    setHasSig(true)
-  }
-
-  const stop = () => {
-    if (isDrawing && hasSig) onSignatureChange(canvasRef.current?.toDataURL('image/png') || null)
-    setIsDrawing(false)
-  }
-
-  const clear = () => {
-    const c = canvasRef.current
-    const ctx = c?.getContext('2d')
-    if (!ctx || !c) return
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, c.width, c.height)
-    ctx.strokeStyle = '#e5e7eb'
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(20, c.height - 30)
-    ctx.lineTo(c.width - 20, c.height - 30)
-    ctx.stroke()
-    ctx.strokeStyle = '#1e40af'
-    ctx.lineWidth = 3.5
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-    setHasSig(false)
-    onSignatureChange(null)
-  }
-
-  return (
-    <div className="space-y-2">
-      <Label className="text-base font-semibold text-green-800">{label}</Label>
-      <div className="border-2 border-green-300 rounded-lg overflow-hidden bg-white relative">
-        <canvas ref={canvasRef} className="w-full h-40 cursor-crosshair touch-none"
-          onMouseDown={start} onMouseMove={draw} onMouseUp={stop} onMouseLeave={stop}
-          onTouchStart={start} onTouchMove={draw} onTouchEnd={stop} />
-        {!hasSig && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="text-gray-300 italic">{placeholder}</span></div>}
-      </div>
-      <Button type="button" variant="outline" size="sm" onClick={clear}><RotateCcw className="h-4 w-4 mr-2" />{clearLabel}</Button>
-    </div>
-  )
-}
-
-function SaveIcon({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
-      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-      <polyline points="17 21 17 13 7 13 7 21" />
-      <polyline points="7 3 7 8 15 8" />
-    </svg>
-  )
-}
 
 export default function Page() {
   const [language, setLanguage] = useState<Language>('es')
   const t = translations[language]
   const dateLocale = language === 'es' ? esLocale : enUS
-  const guestSchema = createGuestSchema(t)
 
   const [view, setView] = useState<View>('selection')
   const [apartments, setApartments] = useState<Apartment[]>([])
   const [selectedApartment, setSelectedApartment] = useState<Apartment | null>(null)
-  const [guests, setGuests] = useState<GuestFormData[]>([])
+  const [guests, setGuests] = useState<Guest[]>([])
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isDataLoading, setIsDataLoading] = useState(true)
@@ -234,6 +118,9 @@ export default function Page() {
 
   const photoInputRef = useRef<HTMLInputElement>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [isDrawing, setIsDrawing] = useState(false)
+  const [hasSignature, setHasSignature] = useState(false)
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<GuestFormData>({
     resolver: zodResolver(guestSchema),
@@ -243,14 +130,90 @@ export default function Page() {
   useEffect(() => { fetchApartments() }, [])
   useEffect(() => { if (view === 'admin') fetchRegistrations() }, [view])
 
+  useEffect(() => {
+    if (view === 'signature' && canvasRef.current) {
+      initCanvas()
+    }
+  }, [view])
+
+  const initCanvas = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    canvas.width = canvas.offsetWidth || 300
+    canvas.height = 150
+    const ctx = canvas.getContext('2d')
+    if (ctx) {
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.strokeStyle = '#e5e7eb'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(20, canvas.height - 30)
+      ctx.lineTo(canvas.width - 20, canvas.height - 30)
+      ctx.stroke()
+      ctx.strokeStyle = '#1e40af'
+      ctx.lineWidth = 3.5
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+    }
+    setHasSignature(false)
+    setSignature(null)
+  }
+
+  const getCoords = (e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    const touch = 'touches' in e ? e.touches[0] : e
+    return { x: (touch.clientX - rect.left) * scaleX, y: (touch.clientY - rect.top) * scaleY }
+  }
+
+  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault()
+    const coords = getCoords(e)
+    if (!coords) return
+    setIsDrawing(true)
+    const ctx = canvasRef.current?.getContext('2d')
+    if (ctx) { ctx.beginPath(); ctx.moveTo(coords.x, coords.y) }
+  }
+
+  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDrawing) return
+    e.preventDefault()
+    const coords = getCoords(e)
+    if (!coords) return
+    const ctx = canvasRef.current?.getContext('2d')
+    if (ctx) {
+      ctx.lineTo(coords.x, coords.y)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(coords.x, coords.y)
+    }
+    setHasSignature(true)
+  }
+
+  const stopDrawing = () => {
+    if (isDrawing && hasSignature) {
+      setSignature(canvasRef.current?.toDataURL('image/png') || null)
+    }
+    setIsDrawing(false)
+  }
+
+  const clearSignature = () => {
+    initCanvas()
+  }
+
   const fetchApartments = async () => {
     setIsDataLoading(true)
     try {
       const res = await fetch('/api/apartments')
-      if (!res.ok) throw new Error()
-      const data = await res.json()
-      setApartments(Array.isArray(data) ? data : [])
-    } catch { toast.error(t.errorLoadingApartments); setApartments([]) }
+      if (res.ok) {
+        const data = await res.json()
+        setApartments(Array.isArray(data) ? data : [])
+      }
+    } catch { toast.error(t.errorLoadingApartments) }
     finally { setIsDataLoading(false) }
   }
 
@@ -258,10 +221,11 @@ export default function Page() {
     setIsDataLoading(true)
     try {
       const res = await fetch('/api/registrations')
-      if (!res.ok) throw new Error()
-      const data = await res.json()
-      setRegistrations(Array.isArray(data) ? data : [])
-    } catch { toast.error(t.errorLoadingRegistrations); setRegistrations([]) }
+      if (res.ok) {
+        const data = await res.json()
+        setRegistrations(Array.isArray(data) ? data : [])
+      }
+    } catch { toast.error(t.errorLoadingRegistrations) }
     finally { setIsDataLoading(false) }
   }
 
@@ -277,7 +241,7 @@ export default function Page() {
   }
 
   const handleAddGuest = (data: GuestFormData) => {
-    const newGuest = { ...data, documentPhoto: photoPreview || undefined }
+    const newGuest: Guest = { ...data, documentPhoto: photoPreview || undefined }
     if (guests.length === 0) newGuest.isMainGuest = true
     if (newGuest.isMainGuest) setGuests(guests.map(g => ({ ...g, isMainGuest: false })))
     setGuests([...guests, newGuest])
@@ -371,50 +335,36 @@ export default function Page() {
     if (!ctx) return
 
     const width = 800
-    const lineHeight = 28
     let y = 40
-
-    // Calculate height needed
-    let height = 200
-    height += reg.guests.length * 120
-    if (reg.signature) height += 200
-    if (reg.guests.some(g => g.documentPhoto)) height += 150
+    let height = 200 + reg.guests.length * 100
+    if (reg.signature) height += 150
 
     canvas.width = width
     canvas.height = height
 
-    // Background
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, width, height)
 
-    // Header
     ctx.fillStyle = '#166534'
     ctx.fillRect(0, 0, width, 60)
     ctx.fillStyle = '#ffffff'
     ctx.font = 'bold 24px Arial'
     ctx.fillText(t.hotelName, 20, 40)
 
-    // Title
     ctx.fillStyle = '#166534'
     ctx.font = 'bold 20px Arial'
     y = 100
     ctx.fillText(t.registrationDetails, 20, y)
 
-    // Apartment and dates
     ctx.fillStyle = '#374151'
     ctx.font = '16px Arial'
     y += 35
     ctx.fillText(`${t.apartment}: ${translateApartmentName(reg.apartment.name, language)}`, 20, y)
-    y += lineHeight
+    y += 28
     ctx.fillText(`${t.checkIn}: ${format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })}`, 20, y)
-    if (reg.checkOutDate) {
-      y += lineHeight
-      ctx.fillText(`${t.checkOut}: ${format(new Date(reg.checkOutDate), 'PPP', { locale: dateLocale })}`, 20, y)
-    }
-    y += lineHeight
+    y += 28
     ctx.fillText(`${t.status}: ${reg.status === 'active' ? t.active : t.checkedOut}`, 20, y)
 
-    // Guests
     y += 40
     ctx.fillStyle = '#166534'
     ctx.font = 'bold 18px Arial'
@@ -425,32 +375,14 @@ export default function Page() {
 
     for (const guest of reg.guests) {
       y += 30
-      ctx.font = 'bold 14px Arial'
-      ctx.fillText(`${guest.firstName} ${guest.lastName}${guest.isMainGuest ? ` (${t.principal})` : ''}`, 20, y)
-      ctx.font = '14px Arial'
-      y += lineHeight
-      ctx.fillText(`${guest.documentType}: ${guest.documentNumber}`, 30, y)
-      if (guest.nationality) {
-        y += lineHeight
-        ctx.fillText(`${t.nationality}: ${guest.nationality}`, 30, y)
-      }
-      if (guest.email) {
-        y += lineHeight
-        ctx.fillText(`${t.email}: ${guest.email}`, 30, y)
-      }
-      if (guest.phone) {
-        y += lineHeight
-        ctx.fillText(`${t.phone}: ${guest.phone}`, 30, y)
-      }
+      ctx.fillText(`${guest.firstName} ${guest.lastName} (${guest.documentType}: ${guest.documentNumber})`, 30, y)
     }
 
-    // Signature
     if (reg.signature) {
       y += 40
       ctx.fillStyle = '#166534'
       ctx.font = 'bold 18px Arial'
       ctx.fillText(t.signature + ':', 20, y)
-      y += 10
 
       const sigImg = new window.Image()
       sigImg.src = reg.signature
@@ -459,52 +391,15 @@ export default function Page() {
         sigImg.onerror = () => resolve()
       })
       if (sigImg.complete && sigImg.naturalWidth > 0) {
-        const sigWidth = 300
-        const sigHeight = (sigImg.naturalHeight / sigImg.naturalWidth) * sigWidth
-        ctx.drawImage(sigImg, 20, y, sigWidth, sigHeight)
-        y += sigHeight + 20
+        ctx.drawImage(sigImg, 20, y + 10, 250, 80)
       }
     }
 
-    // Document photos
-    const photos = reg.guests.filter(g => g.documentPhoto)
-    if (photos.length > 0) {
-      y += 20
-      ctx.fillStyle = '#166534'
-      ctx.font = 'bold 18px Arial'
-      ctx.fillText(t.documentPhotos + ':', 20, y)
-      y += 10
-
-      let x = 20
-      for (const guest of photos) {
-        if (guest.documentPhoto) {
-          const photoImg = new window.Image()
-          photoImg.src = guest.documentPhoto
-          await new Promise<void>((resolve) => {
-            photoImg.onload = () => resolve()
-            photoImg.onerror = () => resolve()
-          })
-          if (photoImg.complete && photoImg.naturalWidth > 0) {
-            ctx.drawImage(photoImg, x, y, 120, 80)
-            ctx.fillStyle = '#374151'
-            ctx.font = '12px Arial'
-            ctx.fillText(`${guest.firstName} ${guest.lastName}`, x, y + 95)
-            x += 140
-            if (x > width - 140) {
-              x = 20
-              y += 120
-            }
-          }
-        }
-      }
-    }
-
-    // Download
     const link = document.createElement('a')
-    link.download = `registro-${reg.apartment.name}-${format(new Date(reg.checkInDate), 'yyyy-MM-dd')}.png`
+    link.download = `registro-${format(new Date(reg.checkInDate), 'yyyy-MM-dd')}.png`
     link.href = canvas.toDataURL('image/png')
     link.click()
-    toast.success(language === 'es' ? 'Registro exportado correctamente' : 'Registration exported successfully')
+    toast.success(language === 'es' ? 'Exportado correctamente' : 'Exported successfully')
   }
 
   const documentType = watch('documentType')
@@ -513,6 +408,7 @@ export default function Page() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-orange-50 flex flex-col">
       <Toaster position="top-center" richColors />
+      
       <header className="bg-gradient-to-r from-green-800 to-green-700 text-white shadow-lg">
         <div className="max-w-7xl mx-auto px-3 py-3 sm:px-4 sm:py-4 flex items-center justify-between">
           <div className="flex items-center gap-2 sm:gap-4">
@@ -550,297 +446,288 @@ export default function Page() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8 flex-1">
-        <AnimatePresence mode="wait">
-          {view === 'selection' && (
-            <motion.div key="selection" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-              <div className="text-center mb-8">
-                <h2 className="text-3xl font-bold text-green-800 mb-2">{t.welcome}</h2>
-                <p className="text-muted-foreground">{t.selectApartment}</p>
+        {view === 'selection' && (
+          <div>
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-green-800 mb-2">{t.welcome}</h2>
+              <p className="text-muted-foreground">{t.selectApartment}</p>
+            </div>
+            {isDataLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>
+            ) : apartments.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">{t.noApartments || 'No hay apartamentos'}</p>
+                <Button onClick={fetchApartments} className="mt-4">Reintentar</Button>
               </div>
-              {isDataLoading ? (
-                <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>
-              ) : apartments.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">{t.noApartments || 'No hay apartamentos'}</p>
-                  <Button onClick={fetchApartments} className="mt-4">Reintentar</Button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
-                  {apartments.map((apt, i) => (
-                    <motion.div key={apt.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
-                      <Card className="cursor-pointer hover:shadow-xl transition-all duration-300 border-2 border-transparent hover:border-green-500 bg-white/80 backdrop-blur" onClick={() => selectApartment(apt)}>
-                        <CardContent className="p-4 sm:p-6">
-                          <div className="flex flex-col items-center gap-3 sm:gap-4">
-                            <div className="relative">
-                              <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-gradient-to-br from-green-600 to-green-800 flex items-center justify-center shadow-lg">
-                                <Building2 className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
-                              </div>
-                              {apt._count && apt._count.registrations > 0 && (
-                                <Badge className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-amber-500 text-white text-xs px-1.5 sm:px-2">{apt._count.registrations}</Badge>
-                              )}
-                            </div>
-                            <CardTitle className="text-lg sm:text-xl text-green-800 text-center">{translateApartmentName(apt.name, language)}</CardTitle>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          )}
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
+                {apartments.map((apt) => (
+                  <Card key={apt.id} className="cursor-pointer hover:shadow-xl transition-all duration-300 border-2 border-transparent hover:border-green-500 bg-white/80 backdrop-blur" onClick={() => selectApartment(apt)}>
+                    <CardContent className="p-4 sm:p-6">
+                      <div className="flex flex-col items-center gap-3 sm:gap-4">
+                        <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-gradient-to-br from-green-600 to-green-800 flex items-center justify-center shadow-lg">
+                          <Building2 className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
+                        </div>
+                        <CardTitle className="text-lg sm:text-xl text-green-800 text-center">{translateApartmentName(apt.name, language)}</CardTitle>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-          {view === 'registration' && (
-            <motion.div key="registration" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-              <Button variant="ghost" onClick={() => setView('selection')} className="mb-6 text-green-700">
-                <ArrowLeft className="h-4 w-4 mr-2" />{t.backToApartments}
-              </Button>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
-                  <Card className="bg-white/80 backdrop-blur">
-                    <CardHeader>
-                      <CardTitle className="text-green-800 flex items-center gap-2">
-                        <Building2 className="h-5 w-5" />{selectedApartment?.name}
-                      </CardTitle>
-                      <CardDescription>{t.addGuestData}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <form onSubmit={handleSubmit(handleAddGuest)} className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label>{t.firstName} *</Label>
-                            <Input {...register('firstName')} placeholder={t.firstNamePlaceholder} className="border-green-200" />
-                            {errors.firstName && <p className="text-sm text-red-500">{errors.firstName.message}</p>}
-                          </div>
-                          <div className="space-y-2">
-                            <Label>{t.lastName} *</Label>
-                            <Input {...register('lastName')} placeholder={t.lastNamePlaceholder} className="border-green-200" />
-                            {errors.lastName && <p className="text-sm text-red-500">{errors.lastName.message}</p>}
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label>{t.documentType}</Label>
-                            <Select value={documentType} onValueChange={(v) => setValue('documentType', v)}>
-                              <SelectTrigger className="border-green-200"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="DNI">{t.dni}</SelectItem>
-                                <SelectItem value="Pasaporte">{t.passport}</SelectItem>
-                                <SelectItem value="NIE">{t.nie}</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-2">
-                            <Label>{t.documentNumber} *</Label>
-                            <Input {...register('documentNumber')} placeholder={t.documentNumberPlaceholder} className="border-green-200" />
-                            {errors.documentNumber && <p className="text-sm text-red-500">{errors.documentNumber.message}</p>}
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label>{t.nationality}</Label>
-                            <Input {...register('nationality')} placeholder={t.nationalityPlaceholder} className="border-green-200" />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label>{t.email}</Label>
-                            <Input type="email" {...register('email')} placeholder={t.emailPlaceholder} className="border-green-200" />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>{t.phone}</Label>
-                            <Input {...register('phone')} placeholder={t.phonePlaceholder} className="border-green-200" />
-                          </div>
+        {view === 'registration' && (
+          <div>
+            <Button variant="ghost" onClick={() => setView('selection')} className="mb-6 text-green-700">
+              <ArrowLeft className="h-4 w-4 mr-2" />{t.backToApartments}
+            </Button>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <Card className="bg-white/80 backdrop-blur">
+                  <CardHeader>
+                    <CardTitle className="text-green-800 flex items-center gap-2">
+                      <Building2 className="h-5 w-5" />{selectedApartment?.name}
+                    </CardTitle>
+                    <CardDescription>{t.addGuestData}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <form onSubmit={handleSubmit(handleAddGuest)} className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>{t.firstName} *</Label>
+                          <Input {...register('firstName')} placeholder={t.firstNamePlaceholder} className="border-green-200" />
+                          {errors.firstName && <p className="text-sm text-red-500">{errors.firstName.message}</p>}
                         </div>
                         <div className="space-y-2">
-                          <Label>{t.documentPhoto}</Label>
-                          <div className="flex items-center gap-4">
-                            <input ref={photoInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoChange} className="hidden" />
-                            <Button type="button" variant="outline" onClick={() => photoInputRef.current?.click()}>
-                              <Camera className="h-4 w-4 mr-2" />{photoPreview ? t.changePhoto : t.takePhoto}
-                            </Button>
-                            {photoPreview && (
-                              <div className="relative">
-                                <img src={photoPreview} alt="Preview" className="h-16 w-16 object-cover rounded-md border" />
-                                <button type="button" onClick={() => setPhotoPreview(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"><X className="h-3 w-3" /></button>
-                              </div>
-                            )}
-                          </div>
+                          <Label>{t.lastName} *</Label>
+                          <Input {...register('lastName')} placeholder={t.lastNamePlaceholder} className="border-green-200" />
+                          {errors.lastName && <p className="text-sm text-red-500">{errors.lastName.message}</p>}
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <Checkbox id="isMainGuest" checked={isMainGuest} onCheckedChange={(c) => setValue('isMainGuest', c === true)} />
-                          <Label htmlFor="isMainGuest" className="cursor-pointer">{t.mainGuest}</Label>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>{t.documentType}</Label>
+                          <Select value={documentType} onValueChange={(v) => setValue('documentType', v)}>
+                            <SelectTrigger className="border-green-200"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="DNI">{t.dni}</SelectItem>
+                              <SelectItem value="Pasaporte">{t.passport}</SelectItem>
+                              <SelectItem value="NIE">{t.nie}</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
-                        <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white">
-                          <Plus className="h-4 w-4 mr-2" />{t.addGuest}
-                        </Button>
-                      </form>
-                    </CardContent>
-                  </Card>
-                </div>
-                <div className="lg:col-span-1">
-                  <Card className="bg-white/80 backdrop-blur sticky top-4">
-                    <CardHeader>
-                      <CardTitle className="text-green-800 flex items-center justify-between">
-                        <span>{t.guests}</span>
-                        <Badge variant="secondary">{guests.length}</Badge>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {guests.length === 0 ? (
-                        <p className="text-center text-muted-foreground py-8">{t.noGuests}</p>
-                      ) : (
-                        <ScrollArea className="max-h-96">
-                          <div className="space-y-3">
-                            {guests.map((g, i) => (
-                              <div key={i} className="flex items-start justify-between p-3 bg-green-50 rounded-lg">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium text-green-800">{g.firstName} {g.lastName}</span>
-                                    {g.isMainGuest && <Badge className="bg-amber-500 text-white text-xs">{t.principal}</Badge>}
-                                  </div>
-                                  <p className="text-sm text-muted-foreground">{g.documentType}: {g.documentNumber}</p>
-                                  {g.documentPhoto && (
-                                    <Button 
-                                      variant="link" 
-                                      size="sm" 
-                                      className="p-0 h-auto text-blue-600"
-                                      onClick={() => openPhotoModal(g.documentPhoto)}
-                                    >
-                                      <FileImage className="h-3 w-3 mr-1" />
-                                      {language === 'es' ? 'Ver foto documento' : 'View document photo'}
-                                    </Button>
-                                  )}
-                                </div>
-                                <Button variant="ghost" size="sm" onClick={() => removeGuest(i)} className="text-red-500">
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      )}
-                      <Separator className="my-4" />
-                      <Button onClick={goToSignature} disabled={guests.length === 0} className="w-full bg-green-600 hover:bg-green-700 text-white">
-                        {t.saveRegistration}
+                        <div className="space-y-2">
+                          <Label>{t.documentNumber} *</Label>
+                          <Input {...register('documentNumber')} placeholder={t.documentNumberPlaceholder} className="border-green-200" />
+                          {errors.documentNumber && <p className="text-sm text-red-500">{errors.documentNumber.message}</p>}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>{t.nationality}</Label>
+                          <Input {...register('nationality')} placeholder={t.nationalityPlaceholder} className="border-green-200" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>{t.email}</Label>
+                          <Input type="email" {...register('email')} placeholder={t.emailPlaceholder} className="border-green-200" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{t.phone}</Label>
+                          <Input {...register('phone')} placeholder={t.phonePlaceholder} className="border-green-200" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>{t.documentPhoto}</Label>
+                        <div className="flex items-center gap-4">
+                          <input ref={photoInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoChange} className="hidden" />
+                          <Button type="button" variant="outline" onClick={() => photoInputRef.current?.click()}>
+                            <Camera className="h-4 w-4 mr-2" />{photoPreview ? t.changePhoto : t.takePhoto}
+                          </Button>
+                          {photoPreview && (
+                            <div className="relative">
+                              <img src={photoPreview} alt="Preview" className="h-16 w-16 object-cover rounded-md border" />
+                              <button type="button" onClick={() => setPhotoPreview(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"><X className="h-3 w-3" /></button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox id="isMainGuest" checked={isMainGuest} onCheckedChange={(c) => setValue('isMainGuest', c === true)} />
+                        <Label htmlFor="isMainGuest" className="cursor-pointer">{t.mainGuest}</Label>
+                      </div>
+                      <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white">
+                        <Plus className="h-4 w-4 mr-2" />{t.addGuest}
                       </Button>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {view === 'signature' && (
-            <motion.div key="signature" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-              <Button variant="ghost" onClick={() => setView('registration')} className="mb-6 text-green-700">
-                <ArrowLeft className="h-4 w-4 mr-2" />{t.backToApartments}
-              </Button>
-              <Card className="max-w-2xl mx-auto bg-white/80 backdrop-blur">
-                <CardHeader>
-                  <CardTitle className="text-green-800">{t.signature}</CardTitle>
-                  <CardDescription>{selectedApartment?.name} - {guests.length} {t.guests.toLowerCase()}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
-                    <h4 className="font-medium text-amber-800 mb-4 flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />{t.stayDates}
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label className="text-amber-700">{t.checkInDate} *</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-full justify-start border-amber-300 text-left font-normal">
-                              <Calendar className="h-4 w-4 mr-2" />{format(checkInDate, 'PPP', { locale: dateLocale })}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <CalendarComponent mode="single" selected={checkInDate} onSelect={(d) => d && setCheckInDate(d)} initialFocus />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-amber-700">{t.checkOutDate}</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-full justify-start border-amber-300 text-left font-normal">
-                              <Calendar className="h-4 w-4 mr-2" />{checkOutDate ? format(checkOutDate, 'PPP', { locale: dateLocale }) : t.selectDate}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <CalendarComponent mode="single" selected={checkOutDate} onSelect={setCheckOutDate} initialFocus />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    </div>
-                  </div>
-                  <SignatureCanvas
-                    onSignatureChange={setSignature}
-                    label={t.signature}
-                    clearLabel={t.clear}
-                    placeholder={t.signaturePlaceholder}
-                  />
-                  <Button onClick={handleSaveRegistration} disabled={isLoading || !signature} className="w-full bg-green-600 hover:bg-green-700 text-white">
-                    {isLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <SaveIcon className="h-4 w-4 mr-2" />}
-                    {t.saveRegistration}
-                  </Button>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
-
-          {view === 'admin' && (
-            <motion.div key="admin" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-              <div className="flex justify-between items-center mb-6">
-                <Button variant="ghost" onClick={() => setView('selection')} className="text-green-700">
-                  <ArrowLeft className="h-4 w-4 mr-2" />{t.backToApartments}
-                </Button>
-                <h2 className="text-2xl font-bold text-green-800">{t.adminPanel}</h2>
-              </div>
-              {isDataLoading ? (
-                <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>
-              ) : registrations.length === 0 ? (
-                <Card className="bg-white/80 backdrop-blur">
-                  <CardContent className="p-12 text-center">
-                    <ClipboardList className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">{t.noRegistrations}</p>
+                    </form>
                   </CardContent>
                 </Card>
-              ) : (
-                <div className="space-y-4">
-                  {registrations.map((reg) => (
-                    <Card key={reg.id} className="bg-white/80 backdrop-blur">
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <Badge className={reg.status === 'active' ? 'bg-green-600' : ''}>{reg.status === 'active' ? t.active : t.checkedOut}</Badge>
-                            <p className="text-sm mt-2">{t.checkIn}: {format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })}</p>
-                            <p className="text-sm text-muted-foreground">{translateApartmentName(reg.apartment.name, language)} - {reg.guests.length} {t.guests.toLowerCase()}</p>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => { setSelectedReg(reg); setShowDetailsModal(true) }} title={t.viewDetails || 'Ver detalles'}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => exportRegistrationAsImage(reg)} className="border-green-500 text-green-700" title={language === 'es' ? 'Exportar registro' : 'Export registration'}>
-                              <Download className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => { setRegToDelete(reg.id); setShowDeleteDialog(true) }} className="border-red-500 text-red-700" title={t.delete}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+              </div>
+              <div className="lg:col-span-1">
+                <Card className="bg-white/80 backdrop-blur sticky top-4">
+                  <CardHeader>
+                    <CardTitle className="text-green-800 flex items-center justify-between">
+                      <span>{t.guests}</span>
+                      <Badge variant="secondary">{guests.length}</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {guests.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-8">{t.noGuests}</p>
+                    ) : (
+                      <ScrollArea className="max-h-96">
+                        <div className="space-y-3">
+                          {guests.map((g, i) => (
+                            <div key={i} className="flex items-start justify-between p-3 bg-green-50 rounded-lg">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-green-800">{g.firstName} {g.lastName}</span>
+                                  {g.isMainGuest && <Badge className="bg-amber-500 text-white text-xs">{t.principal}</Badge>}
+                                </div>
+                                <p className="text-sm text-muted-foreground">{g.documentType}: {g.documentNumber}</p>
+                              </div>
+                              <Button variant="ghost" size="sm" onClick={() => removeGuest(i)} className="text-red-500">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                      </ScrollArea>
+                    )}
+                    <Separator className="my-4" />
+                    <Button onClick={goToSignature} disabled={guests.length === 0} className="w-full bg-green-600 hover:bg-green-700 text-white">
+                      {t.saveRegistration}
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {view === 'signature' && (
+          <div>
+            <Button variant="ghost" onClick={() => setView('registration')} className="mb-6 text-green-700">
+              <ArrowLeft className="h-4 w-4 mr-2" />{t.backToApartments}
+            </Button>
+            <Card className="max-w-2xl mx-auto bg-white/80 backdrop-blur">
+              <CardHeader>
+                <CardTitle className="text-green-800">{t.signature}</CardTitle>
+                <CardDescription>{selectedApartment?.name} - {guests.length} {t.guests.toLowerCase()}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                  <h4 className="font-medium text-amber-800 mb-4 flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />{t.stayDates}
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-amber-700">{t.checkInDate} *</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-start border-amber-300 text-left font-normal">
+                            <Calendar className="h-4 w-4 mr-2" />{format(checkInDate, 'PPP', { locale: dateLocale })}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <CalendarComponent mode="single" selected={checkInDate} onSelect={(d) => d && setCheckInDate(d)} />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-amber-700">{t.checkOutDate}</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="w-full justify-start border-amber-300 text-left font-normal">
+                            <Calendar className="h-4 w-4 mr-2" />{checkOutDate ? format(checkOutDate, 'PPP', { locale: dateLocale }) : t.selectDate}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <CalendarComponent mode="single" selected={checkOutDate} onSelect={setCheckOutDate} />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+                <div className="space-y-2">
+                  <Label className="text-base font-semibold text-green-800">{t.signature}</Label>
+                  <div className="border-2 border-green-300 rounded-lg overflow-hidden bg-white relative">
+                    <canvas 
+                      ref={canvasRef} 
+                      className="w-full h-40 cursor-crosshair touch-none"
+                      onMouseDown={startDrawing} 
+                      onMouseMove={draw} 
+                      onMouseUp={stopDrawing} 
+                      onMouseLeave={stopDrawing}
+                      onTouchStart={startDrawing} 
+                      onTouchMove={draw} 
+                      onTouchEnd={stopDrawing} 
+                    />
+                    {!hasSignature && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="text-gray-300 italic">{t.signaturePlaceholder}</span></div>}
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={clearSignature}><RotateCcw className="h-4 w-4 mr-2" />{t.clear}</Button>
+                </div>
+                <Button onClick={handleSaveRegistration} disabled={isLoading || !hasSignature} className="w-full bg-green-600 hover:bg-green-700 text-white">
+                  {isLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  {t.saveRegistration}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {view === 'admin' && (
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <Button variant="ghost" onClick={() => setView('selection')} className="text-green-700">
+                <ArrowLeft className="h-4 w-4 mr-2" />{t.backToApartments}
+              </Button>
+              <h2 className="text-2xl font-bold text-green-800">{t.adminPanel}</h2>
+            </div>
+            {isDataLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>
+            ) : registrations.length === 0 ? (
+              <Card className="bg-white/80 backdrop-blur">
+                <CardContent className="p-12 text-center">
+                  <ClipboardList className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">{t.noRegistrations}</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {registrations.map((reg) => (
+                  <Card key={reg.id} className="bg-white/80 backdrop-blur">
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <Badge className={reg.status === 'active' ? 'bg-green-600' : ''}>{reg.status === 'active' ? t.active : t.checkedOut}</Badge>
+                          <p className="text-sm mt-2">{t.checkIn}: {format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })}</p>
+                          <p className="text-sm text-muted-foreground">{translateApartmentName(reg.apartment.name, language)} - {reg.guests.length} {t.guests.toLowerCase()}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => { setSelectedReg(reg); setShowDetailsModal(true) }}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => exportRegistrationAsImage(reg)} className="border-green-500 text-green-700">
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => { setRegToDelete(reg.id); setShowDeleteDialog(true) }} className="border-red-500 text-red-700">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
-      {/* Details Modal */}
       <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -855,30 +742,17 @@ export default function Page() {
                   {language === 'es' ? 'Exportar' : 'Export'}
                 </Button>
               </div>
-              
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">{t.apartment}</Label>
                   <p className="font-medium">{translateApartmentName(selectedReg.apartment.name, language)}</p>
                 </div>
                 <div>
-                  <Label className="text-muted-foreground">{t.status}</Label>
-                  <p className="font-medium">{selectedReg.status === 'active' ? t.active : t.checkedOut}</p>
-                </div>
-                <div>
                   <Label className="text-muted-foreground">{t.checkIn}</Label>
                   <p className="font-medium">{format(new Date(selectedReg.checkInDate), 'PPP', { locale: dateLocale })}</p>
                 </div>
-                {selectedReg.checkOutDate && (
-                  <div>
-                    <Label className="text-muted-foreground">{t.checkOut}</Label>
-                    <p className="font-medium">{format(new Date(selectedReg.checkOutDate), 'PPP', { locale: dateLocale })}</p>
-                  </div>
-                )}
               </div>
-
               <Separator />
-
               <div>
                 <Label className="text-lg font-semibold">{t.guests}</Label>
                 <div className="space-y-3 mt-2">
@@ -891,27 +765,15 @@ export default function Page() {
                             {g.isMainGuest && <Badge className="bg-amber-500 text-white text-xs">{t.principal}</Badge>}
                           </div>
                           <p className="text-sm text-muted-foreground">{g.documentType}: {g.documentNumber}</p>
-                          {g.nationality && <p className="text-sm text-muted-foreground">{t.nationality}: {g.nationality}</p>}
-                          {g.email && <p className="text-sm text-muted-foreground">{t.email}: {g.email}</p>}
-                          {g.phone && <p className="text-sm text-muted-foreground">{t.phone}: {g.phone}</p>}
                         </div>
                         {g.documentPhoto && (
-                          <div className="flex flex-col items-center gap-1">
-                            <img 
-                              src={g.documentPhoto} 
-                              alt="Documento" 
-                              className="h-20 w-20 object-cover rounded-md border cursor-pointer hover:opacity-80 transition-opacity"
-                              onClick={() => openPhotoModal(g.documentPhoto!)}
-                            />
-                            <span className="text-xs text-muted-foreground">{t.documentPhoto}</span>
-                          </div>
+                          <img src={g.documentPhoto} alt="Documento" className="h-16 w-16 object-cover rounded-md border cursor-pointer" onClick={() => openPhotoModal(g.documentPhoto!)} />
                         )}
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
-
               {selectedReg.signature && (
                 <div>
                   <Label className="text-lg font-semibold">{t.signature}</Label>
@@ -920,7 +782,6 @@ export default function Page() {
                   </div>
                 </div>
               )}
-
               {selectedReg.status === 'active' && (
                 <Button onClick={() => handleCheckout(selectedReg.id)} disabled={isLoading} className="w-full bg-amber-500 hover:bg-amber-600 text-white">
                   {t.checkout}
@@ -931,7 +792,6 @@ export default function Page() {
         </DialogContent>
       </Dialog>
 
-      {/* Photo Modal */}
       <Dialog open={showPhotoModal} onOpenChange={setShowPhotoModal}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -945,7 +805,6 @@ export default function Page() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
