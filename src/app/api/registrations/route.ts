@@ -1,85 +1,91 @@
 import { NextResponse } from 'next/server'
 
-export async function GET() {
+async function queryTurso(sql: string) {
   const tursoUrl = process.env.TURSO_DATABASE_URL
   const tursoToken = process.env.TURSO_AUTH_TOKEN
 
   if (!tursoUrl || !tursoToken) {
-    return NextResponse.json([])
+    throw new Error('Variables de entorno no configuradas')
   }
 
   const httpUrl = tursoUrl.replace('libsql://', 'https://')
 
-  try {
-    // Obtener registros
-    const regResponse = await fetch(httpUrl + '/v2/pipeline', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + tursoToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        requests: [
-          { type: 'execute', stmt: { sql: 'SELECT id, apartmentId, checkInDate, checkOutDate, status, notes, signature FROM GuestRegistration ORDER BY checkInDate DESC' } },
-          { type: 'close' }
-        ]
-      })
+  const response = await fetch(httpUrl + '/v2/pipeline', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + tursoToken,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      requests: [{ type: 'execute', stmt: { sql } }, { type: 'close' }]
     })
+  })
 
-    const regData = await regResponse.json()
-    const regRows = regData.results?.[0]?.response?.result?.rows || []
-    const regCols = regData.results?.[0]?.response?.result?.cols || []
+  if (!response.ok) {
+    throw new Error('Error en Turso: ' + response.status)
+  }
 
-    const registrations = []
+  return response.json()
+}
 
-    for (const row of regRows) {
-      const reg: any = {
-        id: row[0]?.value || '',
-        apartmentId: row[1]?.value || '',
-        checkInDate: row[2]?.value || '',
-        checkOutDate: row[3]?.value || null,
-        status: row[4]?.value || 'active',
-        notes: row[5]?.value || null,
-        signature: row[6]?.value || null,
-        apartment: { id: row[1]?.value || '', name: 'Apartamento', description: '', capacity: 6 },
-        guests: []
-      }
+export async function GET() {
+  try {
+    const tursoUrl = process.env.TURSO_DATABASE_URL
+    const tursoToken = process.env.TURSO_AUTH_TOKEN
 
-      // Obtener huéspedes del registro
-      const guestResponse = await fetch(httpUrl + '/v2/pipeline', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + tursoToken,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          requests: [
-            { type: 'execute', stmt: { sql: `SELECT firstName, lastName, documentType, documentNumber, nationality, email, phone, isMainGuest FROM Guest WHERE registrationId = '${reg.id}'` } },
-            { type: 'close' }
-          ]
-        })
-      })
-
-      const guestData = await guestResponse.json()
-      const guestRows = guestData.results?.[0]?.response?.result?.rows || []
-
-      reg.guests = guestRows.map((g: any) => ({
-        firstName: g[0]?.value || '',
-        lastName: g[1]?.value || '',
-        documentType: g[2]?.value || 'DNI',
-        documentNumber: g[3]?.value || '',
-        nationality: g[4]?.value || null,
-        email: g[5]?.value || null,
-        phone: g[6]?.value || null,
-        isMainGuest: g[7]?.value === '1' || g[7]?.value === 1
-      }))
-
-      registrations.push(reg)
+    if (!tursoUrl || !tursoToken) {
+      return NextResponse.json([])
     }
 
-    return NextResponse.json(registrations)
+    const regResult = await queryTurso(`
+      SELECT r.id, r.apartmentId, r.checkInDate, r.checkOutDate, r.status, r.signature, r.notes,
+             a.id as apt_id, a.name as apt_name
+      FROM GuestRegistration r
+      LEFT JOIN Apartment a ON r.apartmentId = a.id
+      ORDER BY r.checkInDate DESC
+    `)
 
-  } catch (e) {
+    const registrations = regResult.results?.[0]?.response?.result?.rows || []
+
+    const guestsResult = await queryTurso(`
+      SELECT id, registrationId, firstName, lastName, documentType, documentNumber, 
+             documentPhoto, nationality, email, phone, isMainGuest
+      FROM Guest
+    `)
+
+    const allGuests = guestsResult.results?.[0]?.response?.result?.rows || []
+
+    const result = registrations.map((row: any[]) => ({
+      id: row[0],
+      apartmentId: row[1],
+      checkInDate: row[2],
+      checkOutDate: row[3],
+      status: row[4],
+      signature: row[5],
+      notes: row[6],
+      apartment: {
+        id: row[7] || row[1],
+        name: row[8] || 'Sin apartamento'
+      },
+      guests: allGuests
+        .filter((g: any[]) => g[1] === row[0])
+        .map((g: any[]) => ({
+          firstName: g[2],
+          lastName: g[3],
+          documentType: g[4],
+          documentNumber: g[5],
+          documentPhoto: g[6],
+          nationality: g[7],
+          email: g[8],
+          phone: g[9],
+          isMainGuest: g[10] === 1
+        }))
+    }))
+
+    return NextResponse.json(result)
+
+  } catch (error) {
+    console.error('Error loading registrations:', error)
     return NextResponse.json([])
   }
 }
@@ -98,10 +104,10 @@ export async function POST(request: Request) {
   try {
     const regId = 'reg_' + Date.now()
     const checkIn = body.checkInDate || new Date().toISOString()
+    const checkOut = body.checkOutDate || null
     const signature = (body.signature || '').replace(/'/g, "''")
-    const aptId = body.apartmentId || ''
 
-    const sql = `INSERT INTO GuestRegistration (id, apartmentId, checkInDate, status, signature) VALUES ('${regId}', '${aptId}', '${checkIn}', 'active', '${signature}')`
+    const sql = `INSERT INTO GuestRegistration (id, apartmentId, checkInDate, checkOutDate, status, signature) VALUES ('${regId}', '${body.apartmentId}', '${checkIn}', ${checkOut ? `'${checkOut}'` : 'NULL'}, 'active', '${signature}')`
 
     await fetch(httpUrl + '/v2/pipeline', {
       method: 'POST',
@@ -114,16 +120,17 @@ export async function POST(request: Request) {
       })
     })
 
-    // Insertar huéspedes
     for (const guest of body.guests || []) {
       const guestId = 'guest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5)
       const firstName = (guest.firstName || '').replace(/'/g, "''")
       const lastName = (guest.lastName || '').replace(/'/g, "''")
       const docNum = (guest.documentNumber || '').replace(/'/g, "''")
-      const docType = guest.documentType || 'DNI'
-      const main = guest.isMainGuest ? 1 : 0
+      const docPhoto = guest.documentPhoto ? `'${(guest.documentPhoto || '').replace(/'/g, "''")}'` : 'NULL'
+      const nationality = guest.nationality ? `'${(guest.nationality || '').replace(/'/g, "''")}'` : 'NULL'
+      const email = guest.email ? `'${(guest.email || '').replace(/'/g, "''")}'` : 'NULL'
+      const phone = guest.phone ? `'${(guest.phone || '').replace(/'/g, "''")}'` : 'NULL'
 
-      const guestSql = `INSERT INTO Guest (id, registrationId, firstName, lastName, documentType, documentNumber, isMainGuest) VALUES ('${guestId}', '${regId}', '${firstName}', '${lastName}', '${docType}', '${docNum}', ${main})`
+      const guestSql = `INSERT INTO Guest (id, registrationId, firstName, lastName, documentType, documentNumber, documentPhoto, nationality, email, phone, isMainGuest) VALUES ('${guestId}', '${regId}', '${firstName}', '${lastName}', '${guest.documentType || 'DNI'}', '${docNum}', ${docPhoto}, ${nationality}, ${email}, ${phone}, ${guest.isMainGuest ? 1 : 0})`
 
       await fetch(httpUrl + '/v2/pipeline', {
         method: 'POST',
