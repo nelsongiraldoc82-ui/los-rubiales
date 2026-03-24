@@ -22,7 +22,9 @@ import {
   Loader2,
   RotateCcw,
   Globe,
-  ClipboardList
+  ClipboardList,
+  Download,
+  FileImage
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -225,6 +227,8 @@ export default function Page() {
 
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showPhotoModal, setShowPhotoModal] = useState(false)
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
   const [selectedReg, setSelectedReg] = useState<Registration | null>(null)
   const [regToDelete, setRegToDelete] = useState<string | null>(null)
 
@@ -354,6 +358,153 @@ export default function Page() {
       reader.onloadend = () => setPhotoPreview(reader.result as string)
       reader.readAsDataURL(file)
     }
+  }
+
+  const openPhotoModal = (photo: string) => {
+    setSelectedPhoto(photo)
+    setShowPhotoModal(true)
+  }
+
+  const exportRegistrationAsImage = async (reg: Registration) => {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const width = 800
+    const lineHeight = 28
+    let y = 40
+
+    // Calculate height needed
+    let height = 200
+    height += reg.guests.length * 120
+    if (reg.signature) height += 200
+    if (reg.guests.some(g => g.documentPhoto)) height += 150
+
+    canvas.width = width
+    canvas.height = height
+
+    // Background
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, width, height)
+
+    // Header
+    ctx.fillStyle = '#166534'
+    ctx.fillRect(0, 0, width, 60)
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 24px Arial'
+    ctx.fillText(t.hotelName, 20, 40)
+
+    // Title
+    ctx.fillStyle = '#166534'
+    ctx.font = 'bold 20px Arial'
+    y = 100
+    ctx.fillText(t.registrationDetails, 20, y)
+
+    // Apartment and dates
+    ctx.fillStyle = '#374151'
+    ctx.font = '16px Arial'
+    y += 35
+    ctx.fillText(`${t.apartment}: ${translateApartmentName(reg.apartment.name, language)}`, 20, y)
+    y += lineHeight
+    ctx.fillText(`${t.checkIn}: ${format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })}`, 20, y)
+    if (reg.checkOutDate) {
+      y += lineHeight
+      ctx.fillText(`${t.checkOut}: ${format(new Date(reg.checkOutDate), 'PPP', { locale: dateLocale })}`, 20, y)
+    }
+    y += lineHeight
+    ctx.fillText(`${t.status}: ${reg.status === 'active' ? t.active : t.checkedOut}`, 20, y)
+
+    // Guests
+    y += 40
+    ctx.fillStyle = '#166534'
+    ctx.font = 'bold 18px Arial'
+    ctx.fillText(t.guests + ':', 20, y)
+
+    ctx.fillStyle = '#374151'
+    ctx.font = '14px Arial'
+
+    for (const guest of reg.guests) {
+      y += 30
+      ctx.font = 'bold 14px Arial'
+      ctx.fillText(`${guest.firstName} ${guest.lastName}${guest.isMainGuest ? ` (${t.principal})` : ''}`, 20, y)
+      ctx.font = '14px Arial'
+      y += lineHeight
+      ctx.fillText(`${guest.documentType}: ${guest.documentNumber}`, 30, y)
+      if (guest.nationality) {
+        y += lineHeight
+        ctx.fillText(`${t.nationality}: ${guest.nationality}`, 30, y)
+      }
+      if (guest.email) {
+        y += lineHeight
+        ctx.fillText(`${t.email}: ${guest.email}`, 30, y)
+      }
+      if (guest.phone) {
+        y += lineHeight
+        ctx.fillText(`${t.phone}: ${guest.phone}`, 30, y)
+      }
+    }
+
+    // Signature
+    if (reg.signature) {
+      y += 40
+      ctx.fillStyle = '#166534'
+      ctx.font = 'bold 18px Arial'
+      ctx.fillText(t.signature + ':', 20, y)
+      y += 10
+
+      const sigImg = new window.Image()
+      sigImg.src = reg.signature
+      await new Promise<void>((resolve) => {
+        sigImg.onload = () => resolve()
+        sigImg.onerror = () => resolve()
+      })
+      if (sigImg.complete && sigImg.naturalWidth > 0) {
+        const sigWidth = 300
+        const sigHeight = (sigImg.naturalHeight / sigImg.naturalWidth) * sigWidth
+        ctx.drawImage(sigImg, 20, y, sigWidth, sigHeight)
+        y += sigHeight + 20
+      }
+    }
+
+    // Document photos
+    const photos = reg.guests.filter(g => g.documentPhoto)
+    if (photos.length > 0) {
+      y += 20
+      ctx.fillStyle = '#166534'
+      ctx.font = 'bold 18px Arial'
+      ctx.fillText(t.documentPhotos + ':', 20, y)
+      y += 10
+
+      let x = 20
+      for (const guest of photos) {
+        if (guest.documentPhoto) {
+          const photoImg = new window.Image()
+          photoImg.src = guest.documentPhoto
+          await new Promise<void>((resolve) => {
+            photoImg.onload = () => resolve()
+            photoImg.onerror = () => resolve()
+          })
+          if (photoImg.complete && photoImg.naturalWidth > 0) {
+            ctx.drawImage(photoImg, x, y, 120, 80)
+            ctx.fillStyle = '#374151'
+            ctx.font = '12px Arial'
+            ctx.fillText(`${guest.firstName} ${guest.lastName}`, x, y + 95)
+            x += 140
+            if (x > width - 140) {
+              x = 20
+              y += 120
+            }
+          }
+        }
+      }
+    }
+
+    // Download
+    const link = document.createElement('a')
+    link.download = `registro-${reg.apartment.name}-${format(new Date(reg.checkInDate), 'yyyy-MM-dd')}.png`
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+    toast.success(language === 'es' ? 'Registro exportado correctamente' : 'Registration exported successfully')
   }
 
   const documentType = watch('documentType')
@@ -549,6 +700,17 @@ export default function Page() {
                                     {g.isMainGuest && <Badge className="bg-amber-500 text-white text-xs">{t.principal}</Badge>}
                                   </div>
                                   <p className="text-sm text-muted-foreground">{g.documentType}: {g.documentNumber}</p>
+                                  {g.documentPhoto && (
+                                    <Button 
+                                      variant="link" 
+                                      size="sm" 
+                                      className="p-0 h-auto text-blue-600"
+                                      onClick={() => openPhotoModal(g.documentPhoto)}
+                                    >
+                                      <FileImage className="h-3 w-3 mr-1" />
+                                      {language === 'es' ? 'Ver foto documento' : 'View document photo'}
+                                    </Button>
+                                  )}
                                 </div>
                                 <Button variant="ghost" size="sm" onClick={() => removeGuest(i)} className="text-red-500">
                                   <Trash2 className="h-4 w-4" />
@@ -654,12 +816,16 @@ export default function Page() {
                           <div>
                             <Badge className={reg.status === 'active' ? 'bg-green-600' : ''}>{reg.status === 'active' ? t.active : t.checkedOut}</Badge>
                             <p className="text-sm mt-2">{t.checkIn}: {format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })}</p>
+                            <p className="text-sm text-muted-foreground">{translateApartmentName(reg.apartment.name, language)} - {reg.guests.length} {t.guests.toLowerCase()}</p>
                           </div>
                           <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => { setSelectedReg(reg); setShowDetailsModal(true) }}>
+                            <Button size="sm" variant="outline" onClick={() => { setSelectedReg(reg); setShowDetailsModal(true) }} title={t.viewDetails || 'Ver detalles'}>
                               <Eye className="h-4 w-4" />
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => { setRegToDelete(reg.id); setShowDeleteDialog(true) }} className="border-red-500 text-red-700">
+                            <Button size="sm" variant="outline" onClick={() => exportRegistrationAsImage(reg)} className="border-green-500 text-green-700" title={language === 'es' ? 'Exportar registro' : 'Export registration'}>
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => { setRegToDelete(reg.id); setShowDeleteDialog(true) }} className="border-red-500 text-red-700" title={t.delete}>
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
@@ -674,30 +840,87 @@ export default function Page() {
         </AnimatePresence>
       </main>
 
+      {/* Details Modal */}
       <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t.registrationDetails}</DialogTitle>
           </DialogHeader>
           {selectedReg && (
             <div className="space-y-4">
-              <Badge className={selectedReg.status === 'active' ? 'bg-green-600' : ''}>{selectedReg.status === 'active' ? t.active : t.checkedOut}</Badge>
+              <div className="flex items-center justify-between">
+                <Badge className={selectedReg.status === 'active' ? 'bg-green-600' : ''}>{selectedReg.status === 'active' ? t.active : t.checkedOut}</Badge>
+                <Button size="sm" variant="outline" onClick={() => exportRegistrationAsImage(selectedReg)} className="border-green-500 text-green-700">
+                  <Download className="h-4 w-4 mr-2" />
+                  {language === 'es' ? 'Exportar' : 'Export'}
+                </Button>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground">{t.apartment}</Label>
+                  <p className="font-medium">{translateApartmentName(selectedReg.apartment.name, language)}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">{t.status}</Label>
+                  <p className="font-medium">{selectedReg.status === 'active' ? t.active : t.checkedOut}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground">{t.checkIn}</Label>
+                  <p className="font-medium">{format(new Date(selectedReg.checkInDate), 'PPP', { locale: dateLocale })}</p>
+                </div>
+                {selectedReg.checkOutDate && (
+                  <div>
+                    <Label className="text-muted-foreground">{t.checkOut}</Label>
+                    <p className="font-medium">{format(new Date(selectedReg.checkOutDate), 'PPP', { locale: dateLocale })}</p>
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
               <div>
-                <Label>{t.guests}</Label>
-                <div className="space-y-2 mt-2">
+                <Label className="text-lg font-semibold">{t.guests}</Label>
+                <div className="space-y-3 mt-2">
                   {selectedReg.guests.map((g, i) => (
-                    <div key={i} className="p-2 bg-gray-50 rounded">
-                      {g.firstName} {g.lastName} ({g.documentType}: {g.documentNumber})
+                    <div key={i} className="p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-green-800">{g.firstName} {g.lastName}</span>
+                            {g.isMainGuest && <Badge className="bg-amber-500 text-white text-xs">{t.principal}</Badge>}
+                          </div>
+                          <p className="text-sm text-muted-foreground">{g.documentType}: {g.documentNumber}</p>
+                          {g.nationality && <p className="text-sm text-muted-foreground">{t.nationality}: {g.nationality}</p>}
+                          {g.email && <p className="text-sm text-muted-foreground">{t.email}: {g.email}</p>}
+                          {g.phone && <p className="text-sm text-muted-foreground">{t.phone}: {g.phone}</p>}
+                        </div>
+                        {g.documentPhoto && (
+                          <div className="flex flex-col items-center gap-1">
+                            <img 
+                              src={g.documentPhoto} 
+                              alt="Documento" 
+                              className="h-20 w-20 object-cover rounded-md border cursor-pointer hover:opacity-80 transition-opacity"
+                              onClick={() => openPhotoModal(g.documentPhoto!)}
+                            />
+                            <span className="text-xs text-muted-foreground">{t.documentPhoto}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
+
               {selectedReg.signature && (
                 <div>
-                  <Label>{t.signature}</Label>
-                  <img src={selectedReg.signature} alt="Firma" className="mt-2 border rounded max-h-32" />
+                  <Label className="text-lg font-semibold">{t.signature}</Label>
+                  <div className="mt-2 border rounded-lg p-2 bg-white">
+                    <img src={selectedReg.signature} alt="Firma" className="max-h-32 mx-auto" />
+                  </div>
                 </div>
               )}
+
               {selectedReg.status === 'active' && (
                 <Button onClick={() => handleCheckout(selectedReg.id)} disabled={isLoading} className="w-full bg-amber-500 hover:bg-amber-600 text-white">
                   {t.checkout}
@@ -708,6 +931,21 @@ export default function Page() {
         </DialogContent>
       </Dialog>
 
+      {/* Photo Modal */}
+      <Dialog open={showPhotoModal} onOpenChange={setShowPhotoModal}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t.documentPhoto}</DialogTitle>
+          </DialogHeader>
+          {selectedPhoto && (
+            <div className="flex justify-center">
+              <img src={selectedPhoto} alt="Documento" className="max-w-full max-h-[70vh] object-contain rounded-lg" />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
