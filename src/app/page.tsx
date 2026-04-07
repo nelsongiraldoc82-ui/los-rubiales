@@ -467,45 +467,126 @@ export default function Page() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    canvas.width = 800
-    canvas.height = 400
+    // Calcular altura dinámica basada en número de huéspedes y si tienen fotos
+    const guestsWithPhotos = reg.guests.filter(g => g.documentPhoto)
+    const extraHeightForPhotos = guestsWithPhotos.length * 180
+    const baseHeight = 450
+    const totalHeight = baseHeight + (reg.guests.length * 30) + extraHeightForPhotos + 100
 
+    canvas.width = 800
+    canvas.height = totalHeight
+
+    // Fondo blanco
     ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, 800, 400)
+    ctx.fillRect(0, 0, 800, totalHeight)
+    
+    // Cabecera verde
     ctx.fillStyle = '#166534'
     ctx.fillRect(0, 0, 800, 60)
     ctx.fillStyle = '#ffffff'
     ctx.font = 'bold 24px Arial'
     ctx.fillText(tr.hotelName, 20, 40)
 
+    // Título
     ctx.fillStyle = '#166534'
     ctx.font = 'bold 18px Arial'
     ctx.fillText(tr.registrationDetails, 20, 100)
 
+    // Información del registro
     ctx.fillStyle = '#374151'
     ctx.font = '14px Arial'
     ctx.fillText(`${tr.apartment}: ${reg.apartment.name}`, 20, 140)
     ctx.fillText(`${tr.checkIn}: ${format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })}`, 20, 170)
     ctx.fillText(`${tr.status}: ${reg.status === 'active' ? tr.active : tr.checkedOut}`, 20, 200)
+
+    // Sección de huéspedes
+    ctx.fillStyle = '#166534'
+    ctx.font = 'bold 16px Arial'
     ctx.fillText(`${tr.guests}:`, 20, 240)
 
     let y = 270
-    for (const g of reg.guests) {
-      ctx.fillText(`${g.firstName} ${g.lastName} (${g.documentType}: ${g.documentNumber})`, 40, y)
-      y += 25
+    
+    for (let i = 0; i < reg.guests.length; i++) {
+      const g = reg.guests[i]
+      
+      // Nombre del huésped
+      ctx.fillStyle = '#374151'
+      ctx.font = 'bold 14px Arial'
+      const guestLabel = g.isMainGuest ? `${g.firstName} ${g.lastName} ★ (${g.documentType}: ${g.documentNumber})` : `${g.firstName} ${g.lastName} (${g.documentType}: ${g.documentNumber})`
+      ctx.fillText(guestLabel, 40, y)
+      
+      // Nacionalidad, email, teléfono si existen
+      ctx.font = '12px Arial'
+      ctx.fillStyle = '#6b7280'
+      let infoY = y + 18
+      if (g.nationality) {
+        ctx.fillText(`${tr.nationality}: ${g.nationality}`, 50, infoY)
+        infoY += 16
+      }
+      if (g.email || g.phone) {
+        ctx.fillText(`${g.email || ''} ${g.phone || ''}`.trim(), 50, infoY)
+        infoY += 16
+      }
+      
+      // Foto del documento si existe
+      if (g.documentPhoto) {
+        try {
+          const photoImg = new window.Image()
+          photoImg.src = g.documentPhoto
+          await new Promise<void>((resolve) => {
+            photoImg.onload = () => resolve()
+            photoImg.onerror = () => resolve()
+          })
+          
+          if (photoImg.complete && photoImg.naturalWidth > 0) {
+            // Marco para la foto
+            ctx.strokeStyle = '#d1d5db'
+            ctx.lineWidth = 1
+            ctx.strokeRect(450, y - 20, 150, 100)
+            
+            // Dibujar foto
+            ctx.drawImage(photoImg, 451, y - 19, 148, 98)
+            
+            // Etiqueta
+            ctx.fillStyle = '#6b7280'
+            ctx.font = '10px Arial'
+            ctx.fillText(tr.documentPhoto, 450, y + 95)
+          }
+        } catch (e) {
+          console.error('Error loading photo:', e)
+        }
+        y += 130 // Espacio extra para la foto
+      }
+      
+      y += 45
     }
 
+    // Sección de firma
+    y += 20
+    ctx.fillStyle = '#166534'
+    ctx.font = 'bold 14px Arial'
+    ctx.fillText(tr.signature + ':', 20, y)
+    
     if (reg.signature) {
       const img = new window.Image()
       img.src = reg.signature
       await new Promise<void>((r) => { img.onload = () => r(); img.onerror = () => r() })
       if (img.complete && img.naturalWidth > 0) {
-        ctx.drawImage(img, 20, y + 10, 200, 60)
+        ctx.drawImage(img, 20, y + 10, 250, 80)
       }
+      y += 100
+    } else {
+      y += 20
     }
 
+    // Pie de página
+    ctx.fillStyle = '#9ca3af'
+    ctx.font = '10px Arial'
+    ctx.fillText(`Generado: ${format(new Date(), 'PPP HH:mm', { locale: dateLocale })}`, 20, totalHeight - 20)
+
+    // Descargar
     const link = document.createElement('a')
-    link.download = `registro-${format(new Date(reg.checkInDate), 'yyyy-MM-dd')}.png`
+    link.download = `registro-${reg.apartment.name}-${format(new Date(reg.checkInDate), 'yyyy-MM-dd')}.png`
     link.href = canvas.toDataURL('image/png')
     link.click()
   }
