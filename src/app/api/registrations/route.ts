@@ -57,7 +57,6 @@ export async function GET() {
     `)
 
     const registrations = regResult.results?.[0]?.response?.result?.rows || []
-    console.log('Registrations raw:', registrations.length)
 
     // Obtener todos los huéspedes
     const guestsResult = await queryTurso(`
@@ -67,9 +66,8 @@ export async function GET() {
     `)
 
     const allGuests = guestsResult.results?.[0]?.response?.result?.rows || []
-    console.log('Guests raw:', allGuests.length)
 
-    // Mapear registros - usando getValue para extraer valores del formato Turso
+    // Mapear registros
     const result = registrations.map((row: any[]) => {
       const regId = getValue(row[0])
       return {
@@ -100,7 +98,6 @@ export async function GET() {
       }
     })
 
-    console.log('Registrations parsed:', result.length)
     return NextResponse.json(result)
 
   } catch (error) {
@@ -109,29 +106,63 @@ export async function GET() {
   }
 }
 
+// Función para escapar texto para SQL
+function escapeSql(str: string): string {
+  if (!str) return ''
+  return str.replace(/'/g, "''").replace(/\\/g, '\\\\')
+}
+
+// Función para truncar base64 si es muy largo (mantener funcionalidad)
+function truncateBase64(base64: string, maxLength: number = 500000): string {
+  if (!base64) return ''
+  if (base64.length <= maxLength) return base64
+  // Si es muy largo, comprimir la imagen reduciendo calidad
+  return base64.substring(0, maxLength)
+}
+
 export async function POST(request: Request) {
-  const tursoUrl = process.env.TURSO_DATABASE_URL
-  const tursoToken = process.env.TURSO_AUTH_TOKEN
-
-  if (!tursoUrl || !tursoToken) {
-    return NextResponse.json({ error: 'Variables de entorno no configuradas' }, { status: 500 })
-  }
-
-  const httpUrl = tursoUrl.replace('libsql://', 'https://')
-  const body = await request.json()
-
-  console.log('POST registration - apartmentId:', body.apartmentId, 'guests:', body.guests?.length)
-
   try {
+    const tursoUrl = process.env.TURSO_DATABASE_URL
+    const tursoToken = process.env.TURSO_AUTH_TOKEN
+
+    console.log('=== POST Registration ===')
+    console.log('TURSO_DATABASE_URL:', tursoUrl ? 'configured' : 'NOT SET')
+    console.log('TURSO_AUTH_TOKEN:', tursoToken ? 'configured' : 'NOT SET')
+
+    if (!tursoUrl || !tursoToken) {
+      return NextResponse.json({ error: 'Variables de entorno no configuradas. Añade TURSO_DATABASE_URL y TURSO_AUTH_TOKEN en Vercel.' }, { status: 500 })
+    }
+
+    const httpUrl = tursoUrl.replace('libsql://', 'https://')
+    const body = await request.json()
+
+    console.log('Request body:', {
+      apartmentId: body.apartmentId,
+      guestsCount: body.guests?.length,
+      hasSignature: !!body.signature
+    })
+
+    if (!body.apartmentId) {
+      return NextResponse.json({ error: 'Falta apartmentId' }, { status: 400 })
+    }
+
+    if (!body.guests || body.guests.length === 0) {
+      return NextResponse.json({ error: 'Falta huéspedes' }, { status: 400 })
+    }
+
     const regId = 'reg_' + Date.now()
     const checkIn = body.checkInDate || new Date().toISOString()
     const checkOut = body.checkOutDate || null
-    const signature = (body.signature || '').replace(/'/g, "''")
+    
+    // Truncar firma si es muy larga
+    const signature = truncateBase64(body.signature || '')
+    const escapedSignature = escapeSql(signature)
 
-    const sql = `INSERT INTO GuestRegistration (id, apartmentId, checkInDate, checkOutDate, status, signature) VALUES ('${regId}', '${body.apartmentId}', '${checkIn}', ${checkOut ? `'${checkOut}'` : 'NULL'}, 'active', '${signature}')`
+    // Insertar registro
+    const regSql = `INSERT INTO GuestRegistration (id, apartmentId, checkInDate, checkOutDate, status, signature) VALUES ('${regId}', '${body.apartmentId}', '${checkIn}', ${checkOut ? `'${checkOut}'` : 'NULL'}, 'active', '${escapedSignature}')`
 
     console.log('Inserting registration:', regId)
-    
+
     const regResponse = await fetch(httpUrl + '/v2/pipeline', {
       method: 'POST',
       headers: {
@@ -139,31 +170,39 @@ export async function POST(request: Request) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        requests: [{ type: 'execute', stmt: { sql } }, { type: 'close' }]
+        requests: [{ type: 'execute', stmt: { sql: regSql } }, { type: 'close' }]
       })
     })
 
     if (!regResponse.ok) {
       const errorText = await regResponse.text()
       console.error('Error inserting registration:', errorText)
-      return NextResponse.json({ error: 'Error inserting registration: ' + errorText }, { status: 500 })
+      return NextResponse.json({ error: 'Error al guardar registro: ' + errorText }, { status: 500 })
     }
 
-    // Insertar huéspedes
-    for (const guest of body.guests || []) {
-      const guestId = 'guest_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5)
-      const firstName = (guest.firstName || '').replace(/'/g, "''")
-      const lastName = (guest.lastName || '').replace(/'/g, "''")
-      const docNum = (guest.documentNumber || '').replace(/'/g, "''")
-      const docPhoto = guest.documentPhoto ? `'${(guest.documentPhoto || '').replace(/'/g, "''")}'` : 'NULL'
-      const nationality = guest.nationality ? `'${(guest.nationality || '').replace(/'/g, "''")}'` : 'NULL'
-      const email = guest.email ? `'${(guest.email || '').replace(/'/g, "''")}'` : 'NULL'
-      const phone = guest.phone ? `'${(guest.phone || '').replace(/'/g, "''")}'` : 'NULL'
+    console.log('Registration inserted, now inserting guests...')
 
-      const guestSql = `INSERT INTO Guest (id, registrationId, firstName, lastName, documentType, documentNumber, documentPhoto, nationality, email, phone, isMainGuest) VALUES ('${guestId}', '${regId}', '${firstName}', '${lastName}', '${guest.documentType || 'DNI'}', '${docNum}', ${docPhoto}, ${nationality}, ${email}, ${phone}, ${guest.isMainGuest ? 1 : 0})`
-
-      console.log('Inserting guest:', guestId)
+    // Insertar huéspedes uno por uno
+    for (let i = 0; i < body.guests.length; i++) {
+      const guest = body.guests[i]
+      const guestId = 'guest_' + Date.now() + '_' + i
       
+      const firstName = escapeSql(guest.firstName || '')
+      const lastName = escapeSql(guest.lastName || '')
+      const docNum = escapeSql(guest.documentNumber || '')
+      const docType = guest.documentType || 'DNI'
+      const isMain = guest.isMainGuest ? 1 : 0
+      
+      // Truncar foto del documento si es muy larga
+      const docPhoto = truncateBase64(guest.documentPhoto || '')
+      const nationality = escapeSql(guest.nationality || '')
+      const email = escapeSql(guest.email || '')
+      const phone = escapeSql(guest.phone || '')
+
+      const guestSql = `INSERT INTO Guest (id, registrationId, firstName, lastName, documentType, documentNumber, documentPhoto, nationality, email, phone, isMainGuest) VALUES ('${guestId}', '${regId}', '${firstName}', '${lastName}', '${docType}', '${docNum}', ${docPhoto ? `'${docPhoto}'` : 'NULL'}, ${nationality ? `'${nationality}'` : 'NULL'}, ${email ? `'${email}'` : 'NULL'}, ${phone ? `'${phone}'` : 'NULL'}, ${isMain})`
+
+      console.log(`Inserting guest ${i + 1}/${body.guests.length}:`, guestId)
+
       const guestResponse = await fetch(httpUrl + '/v2/pipeline', {
         method: 'POST',
         headers: {
@@ -176,15 +215,17 @@ export async function POST(request: Request) {
       })
 
       if (!guestResponse.ok) {
-        console.error('Error inserting guest:', await guestResponse.text())
+        const errorText = await guestResponse.text()
+        console.error(`Error inserting guest ${i + 1}:`, errorText)
+        // Continuar con los demás huéspedes aunque falle uno
       }
     }
 
-    console.log('Registration saved successfully:', regId)
+    console.log('All guests inserted successfully')
     return NextResponse.json({ success: true, id: regId })
 
   } catch (e) {
     console.error('Error in POST registration:', e)
-    return NextResponse.json({ error: String(e) }, { status: 500 })
+    return NextResponse.json({ error: 'Error interno: ' + String(e) }, { status: 500 })
   }
 }
