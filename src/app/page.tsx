@@ -868,30 +868,42 @@ export default function Page() {
               </Card>
             ) : (
               <div className="space-y-4">
-                {registrations.map((reg) => (
-                  <Card key={reg.id} className="bg-white/80 backdrop-blur">
-                    <CardContent className="p-4">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <Badge className={reg.status === 'active' ? 'bg-green-600' : ''}>{reg.status === 'active' ? tr.active : tr.checkedOut}</Badge>
-                          <p className="text-sm mt-2">{tr.checkIn}: {format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })}</p>
-                          <p className="text-sm text-muted-foreground">{reg.apartment.name} - {reg.guests.length} {tr.guests.toLowerCase()}</p>
+                {registrations.map((reg) => {
+                  // Safe date formatting
+                  let dateStr = ''
+                  try {
+                    if (reg.checkInDate) {
+                      dateStr = format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })
+                    }
+                  } catch (e) {
+                    dateStr = reg.checkInDate || ''
+                  }
+                  
+                  return (
+                    <Card key={reg.id} className="bg-white/80 backdrop-blur">
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <Badge className={reg.status === 'active' ? 'bg-green-600' : ''}>{reg.status === 'active' ? tr.active : tr.checkedOut}</Badge>
+                            <p className="text-sm mt-2">{tr.checkIn}: {dateStr}</p>
+                            <p className="text-sm text-muted-foreground">{reg.apartment?.name || 'N/A'} - {reg.guests?.length || 0} {tr.guests.toLowerCase()}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => { setSelectedReg(reg); setShowDetailsModal(true) }}>
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => exportAsImage(reg)} className="border-green-500 text-green-700">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => { setRegToDelete(reg.id); setShowDeleteDialog(true) }} className="border-red-500 text-red-700">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => { setSelectedReg(reg); setShowDetailsModal(true) }}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => exportAsImage(reg)} className="border-green-500 text-green-700">
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => { setRegToDelete(reg.id); setShowDeleteDialog(true) }} className="border-red-500 text-red-700">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -909,26 +921,34 @@ export default function Page() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-muted-foreground">{tr.apartment}</Label>
-                  <p className="font-medium">{selectedReg.apartment.name}</p>
+                  <p className="font-medium">{selectedReg.apartment?.name || 'N/A'}</p>
                 </div>
                 <div>
                   <Label className="text-muted-foreground">{tr.checkIn}</Label>
-                  <p className="font-medium">{format(new Date(selectedReg.checkInDate), 'PPP', { locale: dateLocale })}</p>
+                  <p className="font-medium">
+                    {(() => {
+                      try {
+                        return selectedReg.checkInDate ? format(new Date(selectedReg.checkInDate), 'PPP', { locale: dateLocale }) : 'N/A'
+                      } catch {
+                        return selectedReg.checkInDate || 'N/A'
+                      }
+                    })()}
+                  </p>
                 </div>
               </div>
               <Separator />
               <div>
                 <Label className="text-lg font-semibold">{tr.guests}</Label>
                 <div className="space-y-4 mt-2">
-                  {selectedReg.guests.map((g, i) => (
+                  {(selectedReg.guests || []).map((g, i) => (
                     <div key={i} className="p-4 bg-gray-50 rounded-lg border">
                       <div className="flex flex-col sm:flex-row sm:items-start gap-4">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium text-green-800">{g.firstName} {g.lastName}</span>
+                            <span className="font-medium text-green-800">{g.firstName || ''} {g.lastName || ''}</span>
                             {g.isMainGuest && <Badge className="bg-amber-500 text-white text-xs">{tr.principal}</Badge>}
                           </div>
-                          <p className="text-sm text-muted-foreground">{g.documentType}: {g.documentNumber}</p>
+                          <p className="text-sm text-muted-foreground">{g.documentType || 'DNI'}: {g.documentNumber || ''}</p>
                           {g.nationality && <p className="text-sm text-muted-foreground">{tr.nationality}: {g.nationality}</p>}
                           {g.email && <p className="text-sm text-muted-foreground">{tr.email}: {g.email}</p>}
                           {g.phone && <p className="text-sm text-muted-foreground">{tr.phone}: {g.phone}</p>}
@@ -940,7 +960,7 @@ export default function Page() {
                               src={g.documentPhoto} 
                               alt="Documento" 
                               className="h-24 w-32 object-cover rounded-lg border-2 border-green-300 shadow-sm cursor-pointer hover:scale-105 transition-transform" 
-                              onClick={() => openPhotoModal(g.documentPhoto!)} 
+                              onClick={() => openPhotoModal(g.documentPhoto)} 
                             />
                           </div>
                         )}

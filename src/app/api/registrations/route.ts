@@ -1,27 +1,21 @@
 import { NextResponse } from 'next/server'
 
-// Función auxiliar para extraer valor del formato Turso
-function getValue(cell: any): any {
-  if (cell && typeof cell === 'object' && 'value' in cell) {
-    return cell.value
-  }
-  return cell
+const getTursoConfig = () => {
+  const url = process.env.TURSO_DATABASE_URL
+  const token = process.env.TURSO_AUTH_TOKEN
+  return { url, token }
 }
 
-async function queryTurso(sql: string) {
-  const tursoUrl = process.env.TURSO_DATABASE_URL
-  const tursoToken = process.env.TURSO_AUTH_TOKEN
+const executeSql = async (sql: string) => {
+  const { url, token } = getTursoConfig()
+  if (!url || !token) throw new Error('No config')
 
-  if (!tursoUrl || !tursoToken) {
-    throw new Error('Variables de entorno no configuradas')
-  }
-
-  const httpUrl = tursoUrl.replace('libsql://', 'https://')
-
-  const response = await fetch(httpUrl + '/v2/pipeline', {
+  const httpUrl = url.replace('libsql://', 'https://')
+  
+  const res = await fetch(httpUrl + '/v2/pipeline', {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer ' + tursoToken,
+      'Authorization': 'Bearer ' + token,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -29,204 +23,155 @@ async function queryTurso(sql: string) {
     })
   })
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error('Error en Turso: ' + response.status + ' - ' + errorText)
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Turso error: ${res.status} - ${text}`)
   }
 
-  return response.json()
+  return res.json()
+}
+
+// Extraer valor de celda Turso
+const val = (cell: any): string => {
+  if (cell == null) return ''
+  if (typeof cell === 'object' && 'value' in cell) return cell.value || ''
+  return String(cell)
+}
+
+// Escapar SQL
+const esc = (s: string): string => {
+  if (!s) return ''
+  return s.replace(/'/g, "''")
 }
 
 export async function GET() {
   try {
-    const tursoUrl = process.env.TURSO_DATABASE_URL
-    const tursoToken = process.env.TURSO_AUTH_TOKEN
+    const { url, token } = getTursoConfig()
+    if (!url || !token) return NextResponse.json([])
 
-    if (!tursoUrl || !tursoToken) {
-      return NextResponse.json([], { status: 200 })
-    }
-
-    // Obtener registros con apartment
-    const regResult = await queryTurso(`
+    // Obtener registros
+    const regData = await executeSql(`
       SELECT r.id, r.apartmentId, r.checkInDate, r.checkOutDate, r.status, r.signature, r.notes,
-             a.id as apt_id, a.name as apt_name
+             a.id, a.name
       FROM GuestRegistration r
       LEFT JOIN Apartment a ON r.apartmentId = a.id
       ORDER BY r.checkInDate DESC
     `)
 
-    const registrations = regResult.results?.[0]?.response?.result?.rows || []
+    const regRows = regData.results?.[0]?.response?.result?.rows || []
 
-    // Obtener todos los huéspedes
-    const guestsResult = await queryTurso(`
-      SELECT id, registrationId, firstName, lastName, documentType, documentNumber, 
+    // Obtener huéspedes
+    const guestData = await executeSql(`
+      SELECT registrationId, firstName, lastName, documentType, documentNumber, 
              documentPhoto, nationality, email, phone, isMainGuest
       FROM Guest
     `)
 
-    const allGuests = guestsResult.results?.[0]?.response?.result?.rows || []
+    const guestRows = guestData.results?.[0]?.response?.result?.rows || []
 
-    // Mapear registros
-    const result = registrations.map((row: any[]) => {
-      const regId = getValue(row[0])
+    // Procesar registros
+    const result = regRows.map((row: any[]) => {
+      const regId = val(row[0])
+      
+      // Buscar huéspedes de este registro
+      const guests = guestRows
+        .filter((g: any[]) => val(g[0]) === regId)
+        .map((g: any[]) => ({
+          firstName: val(g[1]),
+          lastName: val(g[2]),
+          documentType: val(g[3]) || 'DNI',
+          documentNumber: val(g[4]),
+          documentPhoto: val(g[5]),
+          nationality: val(g[6]),
+          email: val(g[7]),
+          phone: val(g[8]),
+          isMainGuest: val(g[9]) === '1'
+        }))
+
       return {
         id: regId,
-        apartmentId: getValue(row[1]),
-        checkInDate: getValue(row[2]),
-        checkOutDate: getValue(row[3]),
-        status: getValue(row[4]),
-        signature: getValue(row[5]),
-        notes: getValue(row[6]),
+        apartmentId: val(row[1]),
+        checkInDate: val(row[2]),
+        checkOutDate: val(row[3]) || null,
+        status: val(row[4]) || 'active',
+        signature: val(row[5]),
+        notes: val(row[6]),
         apartment: {
-          id: getValue(row[7]) || getValue(row[1]),
-          name: getValue(row[8]) || 'Sin apartamento'
+          id: val(row[7]) || val(row[1]),
+          name: val(row[8]) || 'Apartamento'
         },
-        guests: allGuests
-          .filter((g: any[]) => getValue(g[1]) === regId)
-          .map((g: any[]) => ({
-            firstName: getValue(g[2]),
-            lastName: getValue(g[3]),
-            documentType: getValue(g[4]),
-            documentNumber: getValue(g[5]),
-            documentPhoto: getValue(g[6]),
-            nationality: getValue(g[7]),
-            email: getValue(g[8]),
-            phone: getValue(g[9]),
-            isMainGuest: getValue(g[10]) === 1 || getValue(g[10]) === true
-          }))
+        guests
       }
     })
 
     return NextResponse.json(result)
 
   } catch (error) {
-    console.error('Error loading registrations:', error)
-    return NextResponse.json([], { status: 200 })
+    console.error('GET error:', error)
+    return NextResponse.json([])
   }
-}
-
-// Función para escapar texto para SQL
-function escapeSql(str: string): string {
-  if (!str) return ''
-  return str.replace(/'/g, "''").replace(/\\/g, '\\\\')
-}
-
-// Generar ID único
-function generateUniqueId(prefix: string): string {
-  const timestamp = Date.now()
-  const random = Math.random().toString(36).substring(2, 10)
-  const random2 = Math.random().toString(36).substring(2, 6)
-  return `${prefix}_${timestamp}_${random}_${random2}`
 }
 
 export async function POST(request: Request) {
   try {
-    const tursoUrl = process.env.TURSO_DATABASE_URL
-    const tursoToken = process.env.TURSO_AUTH_TOKEN
-
-    if (!tursoUrl || !tursoToken) {
-      return NextResponse.json({ error: 'Variables de entorno no configuradas. Añade TURSO_DATABASE_URL y TURSO_AUTH_TOKEN en Vercel.' }, { status: 500 })
+    const { url, token } = getTursoConfig()
+    if (!url || !token) {
+      return NextResponse.json({ error: 'No configurado' }, { status: 500 })
     }
 
-    const httpUrl = tursoUrl.replace('libsql://', 'https://')
     const body = await request.json()
+    const { apartmentId, guests, checkInDate, checkOutDate, signature } = body
 
-    console.log('=== POST Registration ===')
-    console.log('apartmentId:', body.apartmentId)
-    console.log('guests:', body.guests?.length)
-    console.log('hasSignature:', !!body.signature)
-
-    if (!body.apartmentId) {
-      return NextResponse.json({ error: 'Falta apartmentId' }, { status: 400 })
+    if (!apartmentId || !guests?.length) {
+      return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })
     }
 
-    if (!body.guests || body.guests.length === 0) {
-      return NextResponse.json({ error: 'Falta huéspedes' }, { status: 400 })
-    }
+    // IDs únicos
+    const ts = Date.now()
+    const regId = `reg_${ts}`
 
-    // Generar ID único para el registro
-    const regId = generateUniqueId('reg')
-    const checkIn = body.checkInDate || new Date().toISOString()
-    const checkOut = body.checkOutDate || null
+    // Insertar registro (sin firma por ahora para evitar SQL muy largo)
+    const checkIn = checkInDate || new Date().toISOString()
+    const checkOut = checkOutDate ? `'${checkOutDate}'` : 'NULL'
     
-    // Escapar firma
-    const signature = escapeSql(body.signature || '')
+    // Acortar firma si es muy larga
+    const shortSignature = signature ? signature.substring(0, 50000) : ''
 
-    // Insertar registro
-    const regSql = `INSERT INTO GuestRegistration (id, apartmentId, checkInDate, checkOutDate, status, signature) VALUES ('${regId}', '${body.apartmentId}', '${checkIn}', ${checkOut ? `'${checkOut}'` : 'NULL'}, 'active', '${signature}')`
+    await executeSql(`
+      INSERT INTO GuestRegistration (id, apartmentId, checkInDate, checkOutDate, status, signature)
+      VALUES ('${regId}', '${apartmentId}', '${checkIn}', ${checkOut}, 'active', '${esc(shortSignature)}')
+    `)
 
-    console.log('Inserting registration:', regId)
-
-    const regResponse = await fetch(httpUrl + '/v2/pipeline', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + tursoToken,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        requests: [{ type: 'execute', stmt: { sql: regSql } }, { type: 'close' }]
-      })
-    })
-
-    if (!regResponse.ok) {
-      const errorText = await regResponse.text()
-      console.error('Error inserting registration:', errorText)
-      return NextResponse.json({ error: 'Error al guardar registro: ' + errorText }, { status: 500 })
-    }
-
-    console.log('Registration inserted OK')
-
-    // Insertar huéspedes uno por uno con IDs únicos
-    for (let i = 0; i < body.guests.length; i++) {
-      const guest = body.guests[i]
+    // Insertar cada huésped
+    for (let i = 0; i < guests.length; i++) {
+      const g = guests[i]
+      const guestId = `guest_${ts}_${i}`
       
-      // ID único para cada huésped
-      const guestId = generateUniqueId('guest')
+      const firstName = esc(g.firstName || '')
+      const lastName = esc(g.lastName || '')
+      const docType = esc(g.documentType || 'DNI')
+      const docNum = esc(g.documentNumber || '')
+      const isMain = g.isMainGuest ? 1 : 0
       
-      const firstName = escapeSql(guest.firstName || '')
-      const lastName = escapeSql(guest.lastName || '')
-      const docNum = escapeSql(guest.documentNumber || '')
-      const docType = escapeSql(guest.documentType || 'DNI')
-      const isMain = guest.isMainGuest ? 1 : 0
-      
-      // Escapar foto del documento
-      const docPhoto = guest.documentPhoto ? escapeSql(guest.documentPhoto) : ''
-      const nationality = guest.nationality ? escapeSql(guest.nationality) : ''
-      const email = guest.email ? escapeSql(guest.email) : ''
-      const phone = guest.phone ? escapeSql(guest.phone) : ''
+      // Acortar foto si es muy larga
+      const photo = g.documentPhoto ? g.documentPhoto.substring(0, 100000) : ''
+      const nat = esc(g.nationality || '')
+      const em = esc(g.email || '')
+      const ph = esc(g.phone || '')
 
-      const guestSql = `INSERT INTO Guest (id, registrationId, firstName, lastName, documentType, documentNumber, documentPhoto, nationality, email, phone, isMainGuest) VALUES ('${guestId}', '${regId}', '${firstName}', '${lastName}', '${docType}', '${docNum}', ${docPhoto ? `'${docPhoto}'` : 'NULL'}, ${nationality ? `'${nationality}'` : 'NULL'}, ${email ? `'${email}'` : 'NULL'}, ${phone ? `'${phone}'` : 'NULL'}, ${isMain})`
+      const sql = `INSERT INTO Guest (id, registrationId, firstName, lastName, documentType, documentNumber, documentPhoto, nationality, email, phone, isMainGuest) VALUES ('${guestId}', '${regId}', '${firstName}', '${lastName}', '${docType}', '${docNum}', ${photo ? `'${photo}'` : 'NULL'}, ${nat ? `'${nat}'` : 'NULL'}, ${em ? `'${em}'` : 'NULL'}, ${ph ? `'${ph}'` : 'NULL'}, ${isMain})`
 
-      console.log(`Inserting guest ${i + 1}/${body.guests.length}:`, guestId, firstName, lastName)
-
-      const guestResponse = await fetch(httpUrl + '/v2/pipeline', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + tursoToken,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          requests: [{ type: 'execute', stmt: { sql: guestSql } }, { type: 'close' }]
-        })
-      })
-
-      if (!guestResponse.ok) {
-        const errorText = await guestResponse.text()
-        console.error(`Error inserting guest ${i + 1}:`, errorText)
-        // Continuar con los demás huéspedes
-      } else {
-        console.log(`Guest ${i + 1} inserted OK`)
+      try {
+        await executeSql(sql)
+      } catch (e) {
+        console.error('Error inserting guest:', e)
       }
-      
-      // Pequeña pausa para evitar conflictos
-      await new Promise(resolve => setTimeout(resolve, 50))
     }
 
-    console.log('All done!')
     return NextResponse.json({ success: true, id: regId })
 
-  } catch (e) {
-    console.error('Error in POST registration:', e)
-    return NextResponse.json({ error: 'Error interno: ' + String(e) }, { status: 500 })
+  } catch (error) {
+    console.error('POST error:', error)
+    return NextResponse.json({ error: String(error) }, { status: 500 })
   }
 }
