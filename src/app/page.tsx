@@ -20,7 +20,8 @@ import {
   RotateCcw,
   Globe,
   ClipboardList,
-  Download
+  Download,
+  Upload
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -74,7 +75,8 @@ const t = {
     passport: 'Pasaporte',
     nie: 'NIE',
     documentPhoto: 'Foto del documento',
-    takePhoto: 'Capturar foto',
+    takePhoto: 'Tomar foto',
+    uploadPhoto: 'Cargar foto',
     changePhoto: 'Cambiar foto',
     mainGuest: 'Marcar como huésped principal',
     principal: 'Principal',
@@ -144,6 +146,7 @@ const t = {
     nie: 'NIE',
     documentPhoto: 'Document Photo',
     takePhoto: 'Take photo',
+    uploadPhoto: 'Upload photo',
     changePhoto: 'Change photo',
     mainGuest: 'Mark as main guest',
     principal: 'Main',
@@ -257,6 +260,7 @@ export default function Page() {
   const [regToDelete, setRegToDelete] = useState<string | null>(null)
 
   const photoInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
@@ -730,15 +734,54 @@ export default function Page() {
                       </div>
                       <div className="space-y-2">
                         <Label>{tr.documentPhoto}</Label>
-                        <div className="flex items-center gap-4">
-                          <input ref={photoInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoChange} className="hidden" />
-                          <Button type="button" variant="outline" onClick={() => photoInputRef.current?.click()}>
-                            <Camera className="h-4 w-4 mr-2" />{photoPreview ? tr.changePhoto : tr.takePhoto}
-                          </Button>
-                          {photoPreview && (
-                            <div className="relative">
-                              <img src={photoPreview} alt="Preview" className="h-16 w-16 object-cover rounded-md border" />
-                              <button type="button" onClick={() => setPhotoPreview(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"><X className="h-3 w-3" /></button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Input para cámara */}
+                          <input 
+                            ref={photoInputRef} 
+                            type="file" 
+                            accept="image/*" 
+                            capture="environment" 
+                            onChange={handlePhotoChange} 
+                            className="hidden" 
+                          />
+                          {/* Input para cargar archivo */}
+                          <input 
+                            ref={fileInputRef} 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={handlePhotoChange} 
+                            className="hidden" 
+                          />
+                          
+                          {!photoPreview ? (
+                            <>
+                              <Button type="button" variant="outline" onClick={() => photoInputRef.current?.click()}>
+                                <Camera className="h-4 w-4 mr-2" />{tr.takePhoto}
+                              </Button>
+                              <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                                <Upload className="h-4 w-4 mr-2" />{tr.uploadPhoto}
+                              </Button>
+                            </>
+                          ) : (
+                            <div className="flex items-center gap-3">
+                              <div className="relative">
+                                <img src={photoPreview} alt="Preview" className="h-20 w-20 object-cover rounded-lg border-2 border-green-300" />
+                                <button 
+                                  type="button" 
+                                  onClick={() => setPhotoPreview(null)} 
+                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                              <div className="flex flex-col gap-1">
+                                <Button type="button" variant="outline" size="sm" onClick={() => photoInputRef.current?.click()}>
+                                  <Camera className="h-3 w-3 mr-1" />{tr.takePhoto}
+                                </Button>
+                                <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                                  <Upload className="h-3 w-3 mr-1" />{tr.uploadPhoto}
+                                </Button>
+                              </div>
                             </div>
                           )}
                         </div>
