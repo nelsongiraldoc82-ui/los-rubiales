@@ -615,9 +615,9 @@ export default function Page() {
                 <Globe className="h-4 w-4 sm:mr-1" />
                 <span className="hidden sm:inline"><SelectValue /></span>
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="es">Español</SelectItem>
-                <SelectItem value="en">English</SelectItem>
+              <SelectContent className="bg-green-800 border-green-600">
+                <SelectItem value="es" className="text-white hover:bg-green-700 focus:bg-green-700">Español</SelectItem>
+                <SelectItem value="en" className="text-white hover:bg-green-700 focus:bg-green-700">English</SelectItem>
               </SelectContent>
             </Select>
             {view !== 'selection' && (
@@ -919,19 +919,30 @@ export default function Page() {
               <Separator />
               <div>
                 <Label className="text-lg font-semibold">{tr.guests}</Label>
-                <div className="space-y-3 mt-2">
+                <div className="space-y-4 mt-2">
                   {selectedReg.guests.map((g, i) => (
-                    <div key={i} className="p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-start justify-between">
+                    <div key={i} className="p-4 bg-gray-50 rounded-lg border">
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
                         <div className="flex-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 mb-1">
                             <span className="font-medium text-green-800">{g.firstName} {g.lastName}</span>
                             {g.isMainGuest && <Badge className="bg-amber-500 text-white text-xs">{tr.principal}</Badge>}
                           </div>
                           <p className="text-sm text-muted-foreground">{g.documentType}: {g.documentNumber}</p>
+                          {g.nationality && <p className="text-sm text-muted-foreground">{tr.nationality}: {g.nationality}</p>}
+                          {g.email && <p className="text-sm text-muted-foreground">{tr.email}: {g.email}</p>}
+                          {g.phone && <p className="text-sm text-muted-foreground">{tr.phone}: {g.phone}</p>}
                         </div>
-                        {g.documentPhoto && (
-                          <img src={g.documentPhoto} alt="Documento" className="h-16 w-16 object-cover rounded-md border cursor-pointer" onClick={() => openPhotoModal(g.documentPhoto!)} />
+                        {g.documentPhoto && g.documentPhoto.length > 10 && (
+                          <div className="flex-shrink-0">
+                            <p className="text-xs text-muted-foreground mb-1">{tr.documentPhoto}:</p>
+                            <img 
+                              src={g.documentPhoto} 
+                              alt="Documento" 
+                              className="h-24 w-32 object-cover rounded-lg border-2 border-green-300 shadow-sm cursor-pointer hover:scale-105 transition-transform" 
+                              onClick={() => openPhotoModal(g.documentPhoto!)} 
+                            />
+                          </div>
                         )}
                       </div>
                     </div>

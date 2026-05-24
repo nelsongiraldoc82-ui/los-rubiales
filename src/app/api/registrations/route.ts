@@ -43,7 +43,6 @@ export async function GET() {
     const tursoToken = process.env.TURSO_AUTH_TOKEN
 
     if (!tursoUrl || !tursoToken) {
-      console.error('Variables de entorno no configuradas')
       return NextResponse.json([], { status: 200 })
     }
 
@@ -112,22 +111,18 @@ function escapeSql(str: string): string {
   return str.replace(/'/g, "''").replace(/\\/g, '\\\\')
 }
 
-// Función para truncar base64 si es muy largo (mantener funcionalidad)
-function truncateBase64(base64: string, maxLength: number = 500000): string {
-  if (!base64) return ''
-  if (base64.length <= maxLength) return base64
-  // Si es muy largo, comprimir la imagen reduciendo calidad
-  return base64.substring(0, maxLength)
+// Generar ID único
+function generateUniqueId(prefix: string): string {
+  const timestamp = Date.now()
+  const random = Math.random().toString(36).substring(2, 10)
+  const random2 = Math.random().toString(36).substring(2, 6)
+  return `${prefix}_${timestamp}_${random}_${random2}`
 }
 
 export async function POST(request: Request) {
   try {
     const tursoUrl = process.env.TURSO_DATABASE_URL
     const tursoToken = process.env.TURSO_AUTH_TOKEN
-
-    console.log('=== POST Registration ===')
-    console.log('TURSO_DATABASE_URL:', tursoUrl ? 'configured' : 'NOT SET')
-    console.log('TURSO_AUTH_TOKEN:', tursoToken ? 'configured' : 'NOT SET')
 
     if (!tursoUrl || !tursoToken) {
       return NextResponse.json({ error: 'Variables de entorno no configuradas. Añade TURSO_DATABASE_URL y TURSO_AUTH_TOKEN en Vercel.' }, { status: 500 })
@@ -136,11 +131,10 @@ export async function POST(request: Request) {
     const httpUrl = tursoUrl.replace('libsql://', 'https://')
     const body = await request.json()
 
-    console.log('Request body:', {
-      apartmentId: body.apartmentId,
-      guestsCount: body.guests?.length,
-      hasSignature: !!body.signature
-    })
+    console.log('=== POST Registration ===')
+    console.log('apartmentId:', body.apartmentId)
+    console.log('guests:', body.guests?.length)
+    console.log('hasSignature:', !!body.signature)
 
     if (!body.apartmentId) {
       return NextResponse.json({ error: 'Falta apartmentId' }, { status: 400 })
@@ -150,16 +144,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Falta huéspedes' }, { status: 400 })
     }
 
-    const regId = 'reg_' + Date.now()
+    // Generar ID único para el registro
+    const regId = generateUniqueId('reg')
     const checkIn = body.checkInDate || new Date().toISOString()
     const checkOut = body.checkOutDate || null
     
-    // Truncar firma si es muy larga
-    const signature = truncateBase64(body.signature || '')
-    const escapedSignature = escapeSql(signature)
+    // Escapar firma
+    const signature = escapeSql(body.signature || '')
 
     // Insertar registro
-    const regSql = `INSERT INTO GuestRegistration (id, apartmentId, checkInDate, checkOutDate, status, signature) VALUES ('${regId}', '${body.apartmentId}', '${checkIn}', ${checkOut ? `'${checkOut}'` : 'NULL'}, 'active', '${escapedSignature}')`
+    const regSql = `INSERT INTO GuestRegistration (id, apartmentId, checkInDate, checkOutDate, status, signature) VALUES ('${regId}', '${body.apartmentId}', '${checkIn}', ${checkOut ? `'${checkOut}'` : 'NULL'}, 'active', '${signature}')`
 
     console.log('Inserting registration:', regId)
 
@@ -180,28 +174,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Error al guardar registro: ' + errorText }, { status: 500 })
     }
 
-    console.log('Registration inserted, now inserting guests...')
+    console.log('Registration inserted OK')
 
-    // Insertar huéspedes uno por uno
+    // Insertar huéspedes uno por uno con IDs únicos
     for (let i = 0; i < body.guests.length; i++) {
       const guest = body.guests[i]
-      const guestId = 'guest_' + Date.now() + '_' + i
+      
+      // ID único para cada huésped
+      const guestId = generateUniqueId('guest')
       
       const firstName = escapeSql(guest.firstName || '')
       const lastName = escapeSql(guest.lastName || '')
       const docNum = escapeSql(guest.documentNumber || '')
-      const docType = guest.documentType || 'DNI'
+      const docType = escapeSql(guest.documentType || 'DNI')
       const isMain = guest.isMainGuest ? 1 : 0
       
-      // Truncar foto del documento si es muy larga
-      const docPhoto = truncateBase64(guest.documentPhoto || '')
-      const nationality = escapeSql(guest.nationality || '')
-      const email = escapeSql(guest.email || '')
-      const phone = escapeSql(guest.phone || '')
+      // Escapar foto del documento
+      const docPhoto = guest.documentPhoto ? escapeSql(guest.documentPhoto) : ''
+      const nationality = guest.nationality ? escapeSql(guest.nationality) : ''
+      const email = guest.email ? escapeSql(guest.email) : ''
+      const phone = guest.phone ? escapeSql(guest.phone) : ''
 
       const guestSql = `INSERT INTO Guest (id, registrationId, firstName, lastName, documentType, documentNumber, documentPhoto, nationality, email, phone, isMainGuest) VALUES ('${guestId}', '${regId}', '${firstName}', '${lastName}', '${docType}', '${docNum}', ${docPhoto ? `'${docPhoto}'` : 'NULL'}, ${nationality ? `'${nationality}'` : 'NULL'}, ${email ? `'${email}'` : 'NULL'}, ${phone ? `'${phone}'` : 'NULL'}, ${isMain})`
 
-      console.log(`Inserting guest ${i + 1}/${body.guests.length}:`, guestId)
+      console.log(`Inserting guest ${i + 1}/${body.guests.length}:`, guestId, firstName, lastName)
 
       const guestResponse = await fetch(httpUrl + '/v2/pipeline', {
         method: 'POST',
@@ -217,11 +213,16 @@ export async function POST(request: Request) {
       if (!guestResponse.ok) {
         const errorText = await guestResponse.text()
         console.error(`Error inserting guest ${i + 1}:`, errorText)
-        // Continuar con los demás huéspedes aunque falle uno
+        // Continuar con los demás huéspedes
+      } else {
+        console.log(`Guest ${i + 1} inserted OK`)
       }
+      
+      // Pequeña pausa para evitar conflictos
+      await new Promise(resolve => setTimeout(resolve, 50))
     }
 
-    console.log('All guests inserted successfully')
+    console.log('All done!')
     return NextResponse.json({ success: true, id: regId })
 
   } catch (e) {
