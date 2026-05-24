@@ -452,12 +452,56 @@ export default function Page() {
     finally { setIsLoading(false) }
   }
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Comprimir imagen antes de guardar
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const img = new window.Image()
+        img.onload = () => {
+          // Redimensionar a máximo 400x400
+          const maxSize = 400
+          let width = img.width
+          let height = img.height
+          
+          if (width > height) {
+            if (width > maxSize) {
+              height = (height * maxSize) / width
+              width = maxSize
+            }
+          } else {
+            if (height > maxSize) {
+              width = (width * maxSize) / height
+              height = maxSize
+            }
+          }
+          
+          const canvas = document.createElement('canvas')
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height)
+            // Calidad 50% para reducir tamaño
+            const compressed = canvas.toDataURL('image/jpeg', 0.5)
+            resolve(compressed)
+          } else {
+            resolve('')
+          }
+        }
+        img.src = e.target?.result as string
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => setPhotoPreview(reader.result as string)
-      reader.readAsDataURL(file)
+      const compressed = await compressImage(file)
+      if (compressed) {
+        setPhotoPreview(compressed)
+      }
     }
   }
 
