@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { stayDay } from '@/lib/stay-dates'
 import { MAX_DOCUMENT_PHOTO_LENGTH } from '@/lib/registration-limits'
 
 const getTursoConfig = () => {
@@ -107,6 +108,11 @@ export async function POST(request: Request) {
     // Insertar registro sin firma (la firma puede ser muy grande)
     const checkIn = checkInDate || new Date().toISOString()
     const checkOut = checkOutDate || null
+    const arrival = stayDay(checkIn)
+    const departure = checkOut ? stayDay(checkOut) : null
+    if (!arrival || (checkOut && (!departure || departure < arrival))) {
+      return NextResponse.json({ error: 'Fechas de estancia inválidas' }, { status: 400 })
+    }
 
     // Guardar firma en una variable separada para insertar después
     const signatureToSave = signature || ''
