@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { requireAdmin } from '@/lib/admin-session'
+import { MAX_DOCUMENT_PHOTO_LENGTH } from '@/lib/registration-limits'
 
 const getTursoConfig = () => {
   const url = process.env.TURSO_DATABASE_URL
@@ -29,7 +30,9 @@ const executeSql = async (sql: string, args: (string | null)[] = []) => {
     throw new Error(`Turso error: ${res.status} - ${text}`)
   }
 
-  return res.json()
+  const result = await res.json()
+  if (result.results?.[0]?.type !== 'ok') throw new Error('Turso statement failed')
+  return result
 }
 
 // Extraer valor de celda Turso
@@ -37,12 +40,6 @@ const val = (cell: any): string => {
   if (cell == null) return ''
   if (typeof cell === 'object' && 'value' in cell) return cell.value || ''
   return String(cell)
-}
-
-// Escapar SQL
-const esc = (s: string): string => {
-  if (!s) return ''
-  return s.replace(/'/g, "''")
 }
 
 export async function GET(request: NextRequest) {
@@ -134,6 +131,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })
     }
 
+    for (const guest of guests) {
+      if (!guest || typeof guest !== 'object') {
+        return NextResponse.json({ error: 'Huésped inválido' }, { status: 400 })
+      }
+      const photo = guest.documentPhoto
+      if (photo == null || photo === '') continue
+      if (typeof photo !== 'string') {
+        return NextResponse.json({ error: 'Formato de foto inválido' }, { status: 400 })
+      }
+      if (photo.length > MAX_DOCUMENT_PHOTO_LENGTH) {
+        return NextResponse.json({ error: 'La foto es demasiado grande' }, { status: 413 })
+      }
+      if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(photo)) {
+        return NextResponse.json({ error: 'Formato de foto inválido' }, { status: 400 })
+      }
+    }
+
     // IDs únicos
     const ts = Date.now()
     const regId = `reg_${ts}`
@@ -168,36 +182,14 @@ export async function POST(request: Request) {
       const g = guests[i]
       const guestId = `guest_${ts}_${i}`
       
-      const firstName = esc(g.firstName || '')
-      const lastName = esc(g.lastName || '')
-      const docType = esc(g.documentType || 'DNI')
-      const docNum = esc(g.documentNumber || '')
-      const isMain = g.isMainGuest ? 1 : 0
-      const nat = esc(g.nationality || '')
-      const em = esc(g.email || '')
-      const ph = esc(g.phone || '')
-
-      // Insertar huésped SIN foto primero
       await executeSql(`
-        INSERT INTO Guest (id, registrationId, firstName, lastName, documentType, documentNumber, nationality, email, phone, isMainGuest)
-        VALUES ('${guestId}', '${regId}', '${firstName}', '${lastName}', '${docType}', '${docNum}', ${nat ? `'${nat}'` : 'NULL'}, ${em ? `'${em}'` : 'NULL'}, ${ph ? `'${ph}'` : 'NULL'}, ${isMain})
-      `)
+        INSERT INTO Guest (id, registrationId, firstName, lastName, documentType, documentNumber, nationality, email, phone, isMainGuest, documentPhoto)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${g.isMainGuest ? 1 : 0}, ?)
+      `, [
+        guestId, regId, g.firstName || '', g.lastName || '', g.documentType || 'DNI',
+        g.documentNumber || '', g.nationality || null, g.email || null, g.phone || null, g.documentPhoto || null
+      ])
 
-      // Insertar foto por separado si existe (para evitar límites de SQL)
-      if (g.documentPhoto) {
-        try {
-          // Las fotos comprimidas desde el cliente son ~15-30KB
-          // Limitar a 50KB máximo por si acaso
-          const photoToSave = g.documentPhoto.length > 70000 
-            ? g.documentPhoto.substring(0, 70000) 
-            : g.documentPhoto
-          const escapedPhoto = photoToSave.replace(/'/g, "''")
-          await executeSql(`UPDATE Guest SET documentPhoto = '${escapedPhoto}' WHERE id = '${guestId}'`)
-        } catch (photoErr) {
-          console.error('Error saving photo for guest:', photoErr)
-          // Continuar aunque la foto falle
-        }
-      }
     }
 
     console.log('Registration saved successfully:', regId)

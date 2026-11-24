@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { MAX_DOCUMENT_PHOTO_LENGTH, MAX_REGISTRATION_BYTES } from '@/lib/registration-limits'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -60,6 +61,10 @@ const t = {
     download: 'Descargar registro',
     removeGuest: 'Quitar huésped',
     removePhoto: 'Quitar foto',
+    previewPhoto: 'Ampliar foto del documento',
+    preparingPhoto: 'Preparando foto…',
+    photoError: 'No se pudo preparar la foto. Vuelve a tomarla o elige otra imagen.',
+    registrationTooLarge: 'El registro supera el tamaño máximo. Quita alguna foto e inténtalo de nuevo.',
     language: 'Idioma',
     hotelName: 'Los Rubiales',
     hotelSubtitle: 'Hotel Rural',
@@ -143,6 +148,10 @@ const t = {
     download: 'Download registration',
     removeGuest: 'Remove guest',
     removePhoto: 'Remove photo',
+    previewPhoto: 'Enlarge document photo',
+    preparingPhoto: 'Preparing photo…',
+    photoError: 'Could not prepare the photo. Retake it or choose another image.',
+    registrationTooLarge: 'This registration is too large. Remove a photo and try again.',
     language: 'Language',
     hotelName: 'Los Rubiales',
     hotelSubtitle: 'Rural Hotel',
@@ -291,6 +300,8 @@ export default function Page() {
   const photoInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoLoading, setPhotoLoading] = useState(false)
+  const photoRequest = useRef(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [hasSignature, setHasSignature] = useState(false)
@@ -444,6 +455,8 @@ export default function Page() {
 
   const selectApartment = (apt: Apartment) => {
     setSelectedApartment(apt)
+    photoRequest.current += 1
+    setPhotoLoading(false)
     setGuests([])
     setPhotoPreview(null)
     setSignature(null)
@@ -479,17 +492,26 @@ export default function Page() {
     if (!signature) { toast.error(tr.signatureRequired); return }
     setIsLoading(true)
     try {
+      const body = JSON.stringify({
+        apartmentId: selectedApartment?.id,
+        guests: guests.map(g => ({ ...g, documentPhoto: g.documentPhoto || null })),
+        signature,
+        checkInDate: checkInDate.toISOString(),
+        checkOutDate: checkOutDate?.toISOString() || null
+      })
+      if (new Blob([body]).size > MAX_REGISTRATION_BYTES) {
+        toast.error(tr.registrationTooLarge)
+        return
+      }
       const res = await fetch('/api/registrations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apartmentId: selectedApartment?.id,
-          guests: guests.map(g => ({ ...g, documentPhoto: g.documentPhoto || null })),
-          signature,
-          checkInDate: checkInDate.toISOString(),
-          checkOutDate: checkOutDate?.toISOString() || null
-        })
+        body
       })
+      if (res.status === 413) {
+        toast.error(tr.registrationTooLarge)
+        return
+      }
       if (!res.ok) throw new Error()
       toast.success(tr.registrationSaved)
       setView('selection')
@@ -530,56 +552,52 @@ export default function Page() {
     finally { setIsLoading(false) }
   }
 
-  // Comprimir imagen antes de guardar
-  const compressImage = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const img = new window.Image()
-        img.onload = () => {
-          // Redimensionar a máximo 400x400
-          const maxSize = 400
-          let width = img.width
-          let height = img.height
-          
-          if (width > height) {
-            if (width > maxSize) {
-              height = (height * maxSize) / width
-              width = maxSize
-            }
-          } else {
-            if (height > maxSize) {
-              width = (width * maxSize) / height
-              height = maxSize
-            }
-          }
-          
-          const canvas = document.createElement('canvas')
-          canvas.width = width
-          canvas.height = height
-          const ctx = canvas.getContext('2d')
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height)
-            // Calidad 50% para reducir tamaño
-            const compressed = canvas.toDataURL('image/jpeg', 0.5)
-            resolve(compressed)
-          } else {
-            resolve('')
-          }
+  const compressImage = async (file: File) => {
+    const url = URL.createObjectURL(file)
+    try {
+      const image = new window.Image()
+      image.src = url
+      await image.decode()
+
+      const canvas = document.createElement('canvas')
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('Canvas unavailable')
+
+      for (const maxSide of [1800, 1600, 1400, 1200, 1000]) {
+        const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+        context.fillStyle = '#fff'
+        context.fillRect(0, 0, canvas.width, canvas.height)
+        context.imageSmoothingQuality = 'high'
+        context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+        for (const quality of [0.92, 0.86, 0.8]) {
+          const photo = canvas.toDataURL('image/jpeg', quality)
+          if (photo.startsWith('data:image/jpeg;base64,') && photo.length <= MAX_DOCUMENT_PHOTO_LENGTH) return photo
         }
-        img.src = e.target?.result as string
       }
-      reader.readAsDataURL(file)
-    })
+      throw new Error('Photo exceeds size limit')
+    } finally {
+      URL.revokeObjectURL(url)
+    }
   }
 
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const compressed = await compressImage(file)
-      if (compressed) {
-        setPhotoPreview(compressed)
-      }
+  const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    if (!file) return
+
+    input.value = ''
+    const request = ++photoRequest.current
+    setPhotoLoading(true)
+    try {
+      const photo = await compressImage(file)
+      if (request === photoRequest.current) setPhotoPreview(photo)
+    } catch {
+      if (request === photoRequest.current) toast.error(tr.photoError)
+    } finally {
+      if (request === photoRequest.current) setPhotoLoading(false)
     }
   }
 
@@ -595,7 +613,7 @@ export default function Page() {
 
     // Calcular altura dinámica basada en número de huéspedes y si tienen fotos
     const guestsWithPhotos = reg.guests.filter(g => g.documentPhoto)
-    const extraHeightForPhotos = guestsWithPhotos.length * 180
+    const extraHeightForPhotos = guestsWithPhotos.length * 260
     const baseHeight = 450
     const totalHeight = baseHeight + (reg.guests.length * 30) + extraHeightForPhotos + 100
 
@@ -659,29 +677,19 @@ export default function Page() {
         try {
           const photoImg = new window.Image()
           photoImg.src = g.documentPhoto
-          await new Promise<void>((resolve) => {
-            photoImg.onload = () => resolve()
-            photoImg.onerror = () => resolve()
-          })
-          
-          if (photoImg.complete && photoImg.naturalWidth > 0) {
-            // Marco para la foto
-            ctx.strokeStyle = '#d1d5db'
-            ctx.lineWidth = 1
-            ctx.strokeRect(450, y - 20, 150, 100)
-            
-            // Dibujar foto
-            ctx.drawImage(photoImg, 451, y - 19, 148, 98)
-            
-            // Etiqueta
-            ctx.fillStyle = '#6b7280'
-            ctx.font = '10px Arial'
-            ctx.fillText(tr.documentPhoto, 450, y + 95)
-          }
+          await photoImg.decode()
+
+          const scale = Math.min(320 / photoImg.naturalWidth, 210 / photoImg.naturalHeight, 1)
+          const width = Math.round(photoImg.naturalWidth * scale)
+          const height = Math.round(photoImg.naturalHeight * scale)
+          ctx.drawImage(photoImg, 450, y - 20, width, height)
+          ctx.fillStyle = '#6b7280'
+          ctx.font = '12px Arial'
+          ctx.fillText(tr.documentPhoto, 450, y + height)
         } catch (e) {
           console.error('Error loading photo:', e)
         }
-        y += 130 // Espacio extra para la foto
+        y += 225
       }
       
       y += 45
@@ -852,6 +860,7 @@ export default function Page() {
                       </div>
                       <div className="space-y-2">
                         <Label>{tr.documentPhoto}</Label>
+                        {photoLoading && <p role="status" className="text-sm">{tr.preparingPhoto}</p>}
                         <div className="flex flex-wrap items-center gap-2">
                           {/* Input para cámara */}
                           <input 
@@ -873,30 +882,32 @@ export default function Page() {
                           
                           {!photoPreview ? (
                             <>
-                              <Button type="button" variant="outline" onClick={() => photoInputRef.current?.click()}>
+                              <Button type="button" variant="outline" disabled={photoLoading} onClick={() => photoInputRef.current?.click()}>
                                 <Camera className="h-4 w-4 mr-2" />{tr.takePhoto}
                               </Button>
-                              <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                              <Button type="button" variant="outline" disabled={photoLoading} onClick={() => fileInputRef.current?.click()}>
                                 <Upload className="h-4 w-4 mr-2" />{tr.uploadPhoto}
                               </Button>
                             </>
                           ) : (
                             <div className="flex items-center gap-3">
                               <div className="relative">
-                                <img src={photoPreview} alt="Preview" className="h-20 w-20 object-cover rounded-lg border-2 border-green-300" />
+                                <button type="button" aria-label={tr.previewPhoto} onClick={() => openPhotoModal(photoPreview)}>
+                                  <img src={photoPreview} alt="" className="h-20 w-28 object-contain rounded-lg border-2 border-green-300" />
+                                </button>
                                 <button 
                                   type="button" 
-                                  aria-label={tr.removePhoto} onClick={() => setPhotoPreview(null)} 
+                                  disabled={photoLoading} aria-label={tr.removePhoto} onClick={() => setPhotoPreview(null)} 
                                   className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
                                 >
                                   <X className="h-3 w-3" />
                                 </button>
                               </div>
                               <div className="flex flex-col gap-1">
-                                <Button type="button" variant="outline" size="sm" onClick={() => photoInputRef.current?.click()}>
+                                <Button type="button" variant="outline" size="sm" disabled={photoLoading} onClick={() => photoInputRef.current?.click()}>
                                   <Camera className="h-3 w-3 mr-1" />{tr.takePhoto}
                                 </Button>
-                                <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                                <Button type="button" variant="outline" size="sm" disabled={photoLoading} onClick={() => fileInputRef.current?.click()}>
                                   <Upload className="h-3 w-3 mr-1" />{tr.uploadPhoto}
                                 </Button>
                               </div>
@@ -908,7 +919,7 @@ export default function Page() {
                         <Checkbox id="isMainGuest" checked={isMainGuest} onCheckedChange={(c) => setValue('isMainGuest', c === true)} />
                         <Label htmlFor="isMainGuest" className="cursor-pointer">{tr.mainGuest}</Label>
                       </div>
-                      <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white">
+                      <Button type="submit" disabled={photoLoading} className="w-full bg-green-600 hover:bg-green-700 text-white">
                         <Plus className="h-4 w-4 mr-2" />{tr.addGuest}
                       </Button>
                     </form>
