@@ -6,7 +6,8 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast, Toaster } from 'sonner'
-import { format } from 'date-fns'
+import { format, parseISO } from 'date-fns'
+import { matchesStayDateRange, stayDay } from '@/lib/stay-dates'
 import { es as esLocale, enUS } from 'date-fns/locale'
 import {
   ArrowLeft,
@@ -98,7 +99,13 @@ const t = {
     checkedOut: 'Finalizado',
     adminPanel: 'Estancias registradas',
     allApartments: 'Todos los apartamentos',
-    noMatchingRegistrations: 'No hay estancias para este apartamento',
+    noMatchingRegistrations: 'No hay estancias que coincidan con los filtros',
+    fromDate: 'Entrada desde',
+    toDate: 'Entrada hasta',
+    clearDates: 'Limpiar fechas',
+    invalidStayOrder: 'La salida no puede ser anterior a la entrada.',
+    invalidCheckInDate: 'Introduce una fecha de entrada válida.',
+    invalidFilterOrder: 'La fecha hasta no puede ser anterior a la fecha desde.',
     noRegistrations: 'No hay registros todavía',
     errorLoadingApartments: 'Error al cargar los apartamentos',
     errorLoadingRegistrations: 'Error al cargar los registros',
@@ -172,7 +179,13 @@ const t = {
     checkedOut: 'Finished',
     adminPanel: 'Registered stays',
     allApartments: 'All apartments',
-    noMatchingRegistrations: 'No stays for this apartment',
+    noMatchingRegistrations: 'No stays match the filters',
+    fromDate: 'Check-in from',
+    toDate: 'Check-in through',
+    clearDates: 'Clear dates',
+    invalidStayOrder: 'Check-out cannot be earlier than check-in.',
+    invalidCheckInDate: 'Enter a valid check-in date.',
+    invalidFilterOrder: 'The end of the range cannot be earlier than the start.',
     noRegistrations: 'No registrations yet',
     errorLoadingApartments: 'Error loading apartments',
     errorLoadingRegistrations: 'Error loading registrations',
@@ -244,9 +257,11 @@ export default function Page() {
   const [apartmentsFailed, setApartmentsFailed] = useState(false)
   const [adminStatus, setAdminStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [apartmentFilter, setApartmentFilter] = useState('all')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
   const [signature, setSignature] = useState<string | null>(null)
-  const [checkInDate, setCheckInDate] = useState<Date>(new Date())
-  const [checkOutDate, setCheckOutDate] = useState<Date | undefined>(undefined)
+  const [checkInDate, setCheckInDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const [checkOutDate, setCheckOutDate] = useState('')
 
   const [showPhotoModal, setShowPhotoModal] = useState(false)
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
@@ -371,8 +386,8 @@ export default function Page() {
     setGuests([])
     setPhotoPreview(null)
     setSignature(null)
-    setCheckInDate(new Date())
-    setCheckOutDate(undefined)
+    setCheckInDate(format(new Date(), 'yyyy-MM-dd'))
+    setCheckOutDate('')
     reset({ firstName: '', lastName: '', documentType: 'DNI', documentNumber: '', isMainGuest: false })
     setView('registration')
   }
@@ -399,7 +414,11 @@ export default function Page() {
     setView('signature')
   }
 
+  const checkInInvalid = !stayDay(checkInDate)
+  const stayOrderInvalid = Boolean(checkInDate && checkOutDate && checkOutDate < checkInDate)
+
   const handleSaveRegistration = async () => {
+    if (checkInInvalid || stayOrderInvalid) return
     if (!signature) { toast.error(tr.signatureRequired); return }
     setIsLoading(true)
     try {
@@ -407,8 +426,8 @@ export default function Page() {
         apartmentId: selectedApartment?.id,
         guests: guests.map(g => ({ ...g, documentPhoto: g.documentPhoto || null })),
         signature,
-        checkInDate: checkInDate.toISOString(),
-        checkOutDate: checkOutDate?.toISOString() || null
+        checkInDate,
+        checkOutDate: checkOutDate || null
       })
       if (new Blob([body]).size > MAX_REGISTRATION_BYTES) {
         toast.error(tr.registrationTooLarge)
@@ -488,11 +507,15 @@ export default function Page() {
   }
 
   const formatStayDate = (value: string) => {
-    const date = new Date(value)
-    return Number.isNaN(date.getTime()) ? value : format(date, 'PPP', { locale: dateLocale })
+    const day = stayDay(value)
+    return day ? format(parseISO(day), 'PPP', { locale: dateLocale }) : value
   }
   const adminApartments = new Map(registrations.map(reg => [reg.apartmentId, reg.apartmentName]))
-  const visibleRegistrations = registrations.filter(reg => apartmentFilter === 'all' || reg.apartmentId === apartmentFilter)
+  const invalidFilterRange = Boolean(fromDate && toDate && toDate < fromDate)
+  const visibleRegistrations = registrations.filter(reg =>
+    (apartmentFilter === 'all' || reg.apartmentId === apartmentFilter)
+    && matchesStayDateRange(reg.checkInDate, fromDate, toDate)
+  )
   const documentType = watch('documentType')
   const isMainGuest = watch('isMainGuest')
 
@@ -753,12 +776,18 @@ export default function Page() {
                   </h4>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-amber-700">{tr.checkInDate} *</Label>
-                      <Input type="date" value={format(checkInDate, 'yyyy-MM-dd')} onChange={(e) => setCheckInDate(new Date(e.target.value))} className="mt-2 border-amber-300" />
+                      <Label htmlFor="checkInDate" className="text-amber-700">{tr.checkInDate} *</Label>
+                      <Input id="checkInDate" type="date" required value={checkInDate}
+                        onChange={(e) => setCheckInDate(e.target.value)} aria-invalid={checkInInvalid}
+                        aria-describedby={checkInInvalid ? 'checkInError' : undefined} className="mt-2 border-amber-300" />
+                      {checkInInvalid && <p id="checkInError" className="mt-1 text-sm text-red-700">{tr.invalidCheckInDate}</p>}
                     </div>
                     <div>
-                      <Label className="text-amber-700">{tr.checkOutDate}</Label>
-                      <Input type="date" value={checkOutDate ? format(checkOutDate, 'yyyy-MM-dd') : ''} onChange={(e) => e.target.value && setCheckOutDate(new Date(e.target.value))} className="mt-2 border-amber-300" />
+                      <Label htmlFor="checkOutDate" className="text-amber-700">{tr.checkOutDate}</Label>
+                      <Input id="checkOutDate" type="date" min={checkInDate || undefined} value={checkOutDate}
+                        onChange={(e) => setCheckOutDate(e.target.value)} aria-invalid={stayOrderInvalid}
+                        aria-describedby={stayOrderInvalid ? 'checkOutError' : undefined} className="mt-2 border-amber-300" />
+                      {stayOrderInvalid && <p id="checkOutError" role="alert" className="mt-1 text-sm text-red-700">{tr.invalidStayOrder}</p>}
                     </div>
                   </div>
                 </div>
@@ -780,7 +809,7 @@ export default function Page() {
                   </div>
                   <Button type="button" variant="outline" size="sm" onClick={clearSignature}><RotateCcw className="h-4 w-4 mr-2" />{tr.clear}</Button>
                 </div>
-                <Button onClick={handleSaveRegistration} disabled={isLoading || !hasSignature} className="w-full bg-green-600 hover:bg-green-700 text-white">
+                <Button onClick={handleSaveRegistration} disabled={isLoading || !hasSignature || checkInInvalid || stayOrderInvalid} className="w-full bg-green-600 hover:bg-green-700 text-white">
                   {isLoading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   {tr.saveRegistration}
                 </Button>
@@ -823,7 +852,22 @@ export default function Page() {
                     </SelectContent>
                   </Select>
                 </div>
-                {visibleRegistrations.length === 0 && <p role="status">{tr.noMatchingRegistrations}</p>}
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="fromDate">{tr.fromDate}</Label>
+                    <Input id="fromDate" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="toDate">{tr.toDate}</Label>
+                    <Input id="toDate" type="date" min={fromDate || undefined} value={toDate}
+                      onChange={(e) => setToDate(e.target.value)} aria-invalid={invalidFilterRange}
+                      aria-describedby={invalidFilterRange ? 'filterDateError' : undefined} />
+                  </div>
+                  {(fromDate || toDate) && <Button variant="outline" onClick={() => { setFromDate(''); setToDate('') }}>{tr.clearDates}</Button>}
+                </div>
+                {invalidFilterRange
+                  ? <p id="filterDateError" role="alert" className="text-sm text-red-700">{tr.invalidFilterOrder}</p>
+                  : visibleRegistrations.length === 0 && <p role="status">{tr.noMatchingRegistrations}</p>}
                 {visibleRegistrations.map((reg, index) => (
                   <Card key={`${reg.apartmentId}-${reg.checkInDate}-${index}`} className="bg-white/80 backdrop-blur">
                     <CardContent className="p-4">
