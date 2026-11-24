@@ -1,5 +1,4 @@
-import { NextResponse, type NextRequest } from 'next/server'
-import { requireAdmin } from '@/lib/admin-session'
+import { NextResponse } from 'next/server'
 import { MAX_DOCUMENT_PHOTO_LENGTH } from '@/lib/registration-limits'
 
 const getTursoConfig = () => {
@@ -42,73 +41,26 @@ const val = (cell: any): string => {
   return String(cell)
 }
 
-export async function GET(request: NextRequest) {
-  const unauthorized = requireAdmin(request)
-  if (unauthorized) return unauthorized
-
+export async function GET() {
   try {
-    const { url, token } = getTursoConfig()
-    if (!url || !token) return NextResponse.json({ error: 'Error al cargar los registros' }, { status: 500 })
-
-    // Obtener registros
-    const regData = await executeSql(`
-      SELECT r.id, r.apartmentId, r.checkInDate, r.checkOutDate, r.status, r.signature, r.notes,
-             a.id, a.name
+    const data = await executeSql(`
+      SELECT r.apartmentId, a.name, r.checkInDate, r.checkOutDate, r.status,
+             (SELECT COUNT(*) FROM Guest g WHERE g.registrationId = r.id)
       FROM GuestRegistration r
       LEFT JOIN Apartment a ON r.apartmentId = a.id
       ORDER BY r.checkInDate DESC
     `)
-
-    const regRows = regData.results?.[0]?.response?.result?.rows || []
-
-    // Obtener huéspedes
-    const guestData = await executeSql(`
-      SELECT registrationId, firstName, lastName, documentType, documentNumber, 
-             documentPhoto, nationality, email, phone, isMainGuest
-      FROM Guest
-    `)
-
-    const guestRows = guestData.results?.[0]?.response?.result?.rows || []
-
-    // Procesar registros
-    const result = regRows.map((row: any[]) => {
-      const regId = val(row[0])
-      
-      // Buscar huéspedes de este registro
-      const guests = guestRows
-        .filter((g: any[]) => val(g[0]) === regId)
-        .map((g: any[]) => ({
-          firstName: val(g[1]),
-          lastName: val(g[2]),
-          documentType: val(g[3]) || 'DNI',
-          documentNumber: val(g[4]),
-          documentPhoto: val(g[5]),
-          nationality: val(g[6]),
-          email: val(g[7]),
-          phone: val(g[8]),
-          isMainGuest: val(g[9]) === '1'
-        }))
-
-      return {
-        id: regId,
-        apartmentId: val(row[1]),
-        checkInDate: val(row[2]),
-        checkOutDate: val(row[3]) || null,
-        status: val(row[4]) || 'active',
-        signature: val(row[5]),
-        notes: val(row[6]),
-        apartment: {
-          id: val(row[7]) || val(row[1]),
-          name: val(row[8]) || 'Apartamento'
-        },
-        guests
-      }
-    })
-
-    return NextResponse.json(result, { headers: { 'Cache-Control': 'private, no-store' } })
-
+    const rows = data.results[0].response?.result?.rows ?? []
+    return NextResponse.json(rows.map((row: unknown[]) => ({
+      apartmentId: val(row[0]),
+      apartmentName: val(row[1]) || 'Apartamento',
+      checkInDate: val(row[2]),
+      checkOutDate: val(row[3]) || null,
+      status: val(row[4]) || 'active',
+      guestCount: Number(val(row[5]))
+    })), { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
-    console.error('GET error:', error)
+    console.error('Error loading registration summaries:', error)
     return NextResponse.json({ error: 'Error al cargar los registros' }, { status: 500 })
   }
 }
