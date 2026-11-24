@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { MAX_DOCUMENT_PHOTO_LENGTH, MAX_REGISTRATION_BYTES } from '@/lib/registration-limits'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -48,6 +49,23 @@ import {
 // Traducciones simples
 const t = {
   es: {
+    loading: 'Cargando apartamentos…',
+    retry: 'Reintentar',
+    firstNameRequired: 'Nombre requerido',
+    lastNameRequired: 'Apellidos requeridos',
+    documentNumberRequired: 'Número requerido',
+    adminKey: 'Clave de acceso',
+    signIn: 'Acceder',
+    signOut: 'Cerrar sesión',
+    adminError: 'No se pudo acceder',
+    download: 'Descargar registro',
+    removeGuest: 'Quitar huésped',
+    removePhoto: 'Quitar foto',
+    previewPhoto: 'Ampliar foto del documento',
+    preparingPhoto: 'Preparando foto…',
+    photoError: 'No se pudo preparar la foto. Vuelve a tomarla o elige otra imagen.',
+    registrationTooLarge: 'El registro supera el tamaño máximo. Quita alguna foto e inténtalo de nuevo.',
+    language: 'Idioma',
     hotelName: 'Los Rubiales',
     hotelSubtitle: 'Hotel Rural',
     home: 'Inicio',
@@ -118,6 +136,23 @@ const t = {
     delete: 'Eliminar',
   },
   en: {
+    loading: 'Loading apartments…',
+    retry: 'Try again',
+    firstNameRequired: 'First name is required',
+    lastNameRequired: 'Last name is required',
+    documentNumberRequired: 'Document number is required',
+    adminKey: 'Access key',
+    signIn: 'Sign in',
+    signOut: 'Sign out',
+    adminError: 'Could not sign in',
+    download: 'Download registration',
+    removeGuest: 'Remove guest',
+    removePhoto: 'Remove photo',
+    previewPhoto: 'Enlarge document photo',
+    preparingPhoto: 'Preparing photo…',
+    photoError: 'Could not prepare the photo. Retake it or choose another image.',
+    registrationTooLarge: 'This registration is too large. Remove a photo and try again.',
+    language: 'Language',
     hotelName: 'Los Rubiales',
     hotelSubtitle: 'Rural Hotel',
     home: 'Home',
@@ -247,7 +282,10 @@ export default function Page() {
   const [guests, setGuests] = useState<Guest[]>([])
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [isDataLoading, setIsDataLoading] = useState(true)
+  const [apartmentsLoading, setApartmentsLoading] = useState(true)
+  const [apartmentsFailed, setApartmentsFailed] = useState(false)
+  const [adminStatus, setAdminStatus] = useState<'loading' | 'locked' | 'ready' | 'error'>('loading')
+  const [adminError, setAdminError] = useState(false)
   const [signature, setSignature] = useState<string | null>(null)
   const [checkInDate, setCheckInDate] = useState<Date>(new Date())
   const [checkOutDate, setCheckOutDate] = useState<Date | undefined>(undefined)
@@ -262,6 +300,8 @@ export default function Page() {
   const photoInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoLoading, setPhotoLoading] = useState(false)
+  const photoRequest = useRef(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [hasSignature, setHasSignature] = useState(false)
@@ -271,6 +311,7 @@ export default function Page() {
     defaultValues: { firstName: '', lastName: '', documentType: 'DNI', documentNumber: '', isMainGuest: false }
   })
 
+  useEffect(() => { document.documentElement.lang = language }, [language])
   useEffect(() => { fetchApartments() }, [])
   useEffect(() => { if (view === 'admin') fetchRegistrations() }, [view])
   useEffect(() => { if (view === 'signature') setTimeout(initCanvas, 100) }, [view])
@@ -343,31 +384,79 @@ export default function Page() {
   const clearSignature = () => initCanvas()
 
   const fetchApartments = async () => {
-    setIsDataLoading(true)
+    setApartmentsLoading(true)
+    setApartmentsFailed(false)
     try {
-      const res = await fetch('/api/apartments')
-      if (res.ok) {
-        const data = await res.json()
-        setApartments(Array.isArray(data) ? data : [])
-      }
-    } catch { toast.error(tr.errorLoadingApartments) }
-    finally { setIsDataLoading(false) }
+      const response = await fetch('/api/apartments')
+      if (!response.ok) throw new Error()
+      setApartments(await response.json())
+    } catch {
+      setApartmentsFailed(true)
+    } finally {
+      setApartmentsLoading(false)
+    }
   }
 
   const fetchRegistrations = async () => {
-    setIsDataLoading(true)
+    setAdminStatus('loading')
     try {
-      const res = await fetch('/api/registrations')
-      if (res.ok) {
-        const data = await res.json()
-        setRegistrations(Array.isArray(data) ? data : [])
+      const response = await fetch('/api/registrations', { cache: 'no-store' })
+      if (response.status === 401) {
+        setRegistrations([])
+        setAdminStatus('locked')
+        return
       }
-    } catch { toast.error(tr.errorLoadingRegistrations) }
-    finally { setIsDataLoading(false) }
+      if (!response.ok) throw new Error()
+      setRegistrations(await response.json())
+      setAdminStatus('ready')
+    } catch {
+      setRegistrations([])
+      setAdminStatus('error')
+    }
+  }
+
+  const signInAdmin = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const form = event.currentTarget
+    setAdminError(false)
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/admin/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: new FormData(form).get('adminKey') })
+      })
+      if (!response.ok) throw new Error()
+      await fetchRegistrations()
+    } catch {
+      setAdminError(true)
+    } finally {
+      form.reset()
+      setIsLoading(false)
+    }
+  }
+
+  const signOutAdmin = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/admin/session', { method: 'DELETE' })
+      if (!response.ok) throw new Error()
+      setRegistrations([])
+      setSelectedReg(null)
+      setSelectedPhoto(null)
+      setAdminError(false)
+      setAdminStatus('locked')
+    } catch {
+      toast.error(tr.errorLoadingRegistrations)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const selectApartment = (apt: Apartment) => {
     setSelectedApartment(apt)
+    photoRequest.current += 1
+    setPhotoLoading(false)
     setGuests([])
     setPhotoPreview(null)
     setSignature(null)
@@ -403,17 +492,26 @@ export default function Page() {
     if (!signature) { toast.error(tr.signatureRequired); return }
     setIsLoading(true)
     try {
+      const body = JSON.stringify({
+        apartmentId: selectedApartment?.id,
+        guests: guests.map(g => ({ ...g, documentPhoto: g.documentPhoto || null })),
+        signature,
+        checkInDate: checkInDate.toISOString(),
+        checkOutDate: checkOutDate?.toISOString() || null
+      })
+      if (new Blob([body]).size > MAX_REGISTRATION_BYTES) {
+        toast.error(tr.registrationTooLarge)
+        return
+      }
       const res = await fetch('/api/registrations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          apartmentId: selectedApartment?.id,
-          guests: guests.map(g => ({ ...g, documentPhoto: g.documentPhoto || null })),
-          signature,
-          checkInDate: checkInDate.toISOString(),
-          checkOutDate: checkOutDate?.toISOString() || null
-        })
+        body
       })
+      if (res.status === 413) {
+        toast.error(tr.registrationTooLarge)
+        return
+      }
       if (!res.ok) throw new Error()
       toast.success(tr.registrationSaved)
       setView('selection')
@@ -427,11 +525,12 @@ export default function Page() {
   const handleCheckout = async (id: string) => {
     setIsLoading(true)
     try {
-      await fetch(`/api/registrations/${id}`, {
+      const response = await fetch(`/api/registrations/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'checked_out' })
       })
+      if (!response.ok) throw new Error()
       toast.success(tr.checkoutDone)
       setShowDetailsModal(false)
       fetchRegistrations()
@@ -443,7 +542,8 @@ export default function Page() {
     if (!regToDelete) return
     setIsLoading(true)
     try {
-      await fetch(`/api/registrations/${regToDelete}`, { method: 'DELETE' })
+      const response = await fetch(`/api/registrations/${regToDelete}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error()
       toast.success(tr.registrationDeleted)
       setShowDeleteDialog(false)
       setRegToDelete(null)
@@ -452,56 +552,52 @@ export default function Page() {
     finally { setIsLoading(false) }
   }
 
-  // Comprimir imagen antes de guardar
-  const compressImage = (file: File): Promise<string> => {
-    return new Promise((resolve) => {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const img = new window.Image()
-        img.onload = () => {
-          // Redimensionar a máximo 400x400
-          const maxSize = 400
-          let width = img.width
-          let height = img.height
-          
-          if (width > height) {
-            if (width > maxSize) {
-              height = (height * maxSize) / width
-              width = maxSize
-            }
-          } else {
-            if (height > maxSize) {
-              width = (width * maxSize) / height
-              height = maxSize
-            }
-          }
-          
-          const canvas = document.createElement('canvas')
-          canvas.width = width
-          canvas.height = height
-          const ctx = canvas.getContext('2d')
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height)
-            // Calidad 50% para reducir tamaño
-            const compressed = canvas.toDataURL('image/jpeg', 0.5)
-            resolve(compressed)
-          } else {
-            resolve('')
-          }
+  const compressImage = async (file: File) => {
+    const url = URL.createObjectURL(file)
+    try {
+      const image = new window.Image()
+      image.src = url
+      await image.decode()
+
+      const canvas = document.createElement('canvas')
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('Canvas unavailable')
+
+      for (const maxSide of [1800, 1600, 1400, 1200, 1000]) {
+        const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+        context.fillStyle = '#fff'
+        context.fillRect(0, 0, canvas.width, canvas.height)
+        context.imageSmoothingQuality = 'high'
+        context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+        for (const quality of [0.92, 0.86, 0.8]) {
+          const photo = canvas.toDataURL('image/jpeg', quality)
+          if (photo.startsWith('data:image/jpeg;base64,') && photo.length <= MAX_DOCUMENT_PHOTO_LENGTH) return photo
         }
-        img.src = e.target?.result as string
       }
-      reader.readAsDataURL(file)
-    })
+      throw new Error('Photo exceeds size limit')
+    } finally {
+      URL.revokeObjectURL(url)
+    }
   }
 
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const compressed = await compressImage(file)
-      if (compressed) {
-        setPhotoPreview(compressed)
-      }
+  const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    if (!file) return
+
+    input.value = ''
+    const request = ++photoRequest.current
+    setPhotoLoading(true)
+    try {
+      const photo = await compressImage(file)
+      if (request === photoRequest.current) setPhotoPreview(photo)
+    } catch {
+      if (request === photoRequest.current) toast.error(tr.photoError)
+    } finally {
+      if (request === photoRequest.current) setPhotoLoading(false)
     }
   }
 
@@ -517,7 +613,7 @@ export default function Page() {
 
     // Calcular altura dinámica basada en número de huéspedes y si tienen fotos
     const guestsWithPhotos = reg.guests.filter(g => g.documentPhoto)
-    const extraHeightForPhotos = guestsWithPhotos.length * 180
+    const extraHeightForPhotos = guestsWithPhotos.length * 260
     const baseHeight = 450
     const totalHeight = baseHeight + (reg.guests.length * 30) + extraHeightForPhotos + 100
 
@@ -581,29 +677,19 @@ export default function Page() {
         try {
           const photoImg = new window.Image()
           photoImg.src = g.documentPhoto
-          await new Promise<void>((resolve) => {
-            photoImg.onload = () => resolve()
-            photoImg.onerror = () => resolve()
-          })
-          
-          if (photoImg.complete && photoImg.naturalWidth > 0) {
-            // Marco para la foto
-            ctx.strokeStyle = '#d1d5db'
-            ctx.lineWidth = 1
-            ctx.strokeRect(450, y - 20, 150, 100)
-            
-            // Dibujar foto
-            ctx.drawImage(photoImg, 451, y - 19, 148, 98)
-            
-            // Etiqueta
-            ctx.fillStyle = '#6b7280'
-            ctx.font = '10px Arial'
-            ctx.fillText(tr.documentPhoto, 450, y + 95)
-          }
+          await photoImg.decode()
+
+          const scale = Math.min(320 / photoImg.naturalWidth, 210 / photoImg.naturalHeight, 1)
+          const width = Math.round(photoImg.naturalWidth * scale)
+          const height = Math.round(photoImg.naturalHeight * scale)
+          ctx.drawImage(photoImg, 450, y - 20, width, height)
+          ctx.fillStyle = '#6b7280'
+          ctx.font = '12px Arial'
+          ctx.fillText(tr.documentPhoto, 450, y + height)
         } catch (e) {
           console.error('Error loading photo:', e)
         }
-        y += 130 // Espacio extra para la foto
+        y += 225
       }
       
       y += 45
@@ -659,7 +745,7 @@ export default function Page() {
           </div>
           <div className="flex items-center gap-2">
             <Select value={language} onValueChange={(v) => setLanguage(v as Language)}>
-              <SelectTrigger className="w-[70px] sm:w-28 bg-white/10 border-white/30 text-white text-sm">
+              <SelectTrigger aria-label={tr.language} className="w-[70px] sm:w-28 bg-white/10 border-white/30 text-white text-sm">
                 <Globe className="h-4 w-4 sm:mr-1" />
                 <span className="hidden sm:inline"><SelectValue /></span>
               </SelectTrigger>
@@ -686,28 +772,24 @@ export default function Page() {
           <div>
             <div className="text-center mb-8">
               <h2 className="text-3xl font-bold text-green-800 mb-2">{tr.welcome}</h2>
-              <p className="text-muted-foreground">{tr.selectApartment}</p>
+              {!apartmentsLoading && !apartmentsFailed && apartments.length > 0 && <p className="text-muted-foreground">{tr.selectApartment}</p>}
             </div>
-            {isDataLoading ? (
-              <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>
-            ) : apartments.length === 0 ? (
+            {apartmentsLoading ? (
+              <p role="status" className="text-center text-muted-foreground py-12">{tr.loading}</p>
+            ) : apartmentsFailed || apartments.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-muted-foreground">{tr.noApartments}</p>
-                <Button onClick={fetchApartments} className="mt-4">Reintentar</Button>
+                <p className="text-muted-foreground">{apartmentsFailed ? tr.errorLoadingApartments : tr.noApartments}</p>
+                <Button onClick={fetchApartments} className="mt-4">{tr.retry}</Button>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
                 {apartments.map((apt) => (
-                  <Card key={apt.id} className="cursor-pointer hover:shadow-xl transition-all duration-300 border-2 border-transparent hover:border-green-500 bg-white/80 backdrop-blur" onClick={() => selectApartment(apt)}>
-                    <CardContent className="p-4 sm:p-6">
-                      <div className="flex flex-col items-center gap-3 sm:gap-4">
-                        <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-gradient-to-br from-green-600 to-green-800 flex items-center justify-center shadow-lg">
-                          <Building2 className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
-                        </div>
-                        <CardTitle className="text-lg sm:text-xl text-green-800 text-center">{apt.name}</CardTitle>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <button key={apt.id} type="button" className="flex flex-col items-center gap-4 rounded-xl border-2 border-transparent bg-white/80 px-4 py-10 shadow-sm transition-shadow hover:border-green-500 hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green-700" onClick={() => selectApartment(apt)}>
+                    <span className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-green-600 to-green-800 shadow-lg sm:h-20 sm:w-20">
+                      <Building2 aria-hidden="true" className="h-8 w-8 text-white sm:h-10 sm:w-10" />
+                    </span>
+                    <span className="text-lg font-semibold text-green-800 sm:text-xl">{apt.name}</span>
+                  </button>
                 ))}
               </div>
             )}
@@ -732,21 +814,21 @@ export default function Page() {
                     <form onSubmit={handleSubmit(handleAddGuest)} className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>{tr.firstName} *</Label>
-                          <Input {...register('firstName')} placeholder={tr.firstNamePlaceholder} className="border-green-200" />
-                          {errors.firstName && <p className="text-sm text-red-500">{errors.firstName.message}</p>}
+                          <Label htmlFor="firstName">{tr.firstName} *</Label>
+                          <Input id="firstName" aria-required="true" aria-invalid={!!errors.firstName} aria-describedby={errors.firstName ? 'firstName-error' : undefined} {...register('firstName')} placeholder={tr.firstNamePlaceholder} className="border-green-200" />
+                          {errors.firstName && <p id="firstName-error" className="text-sm text-red-500">{tr.firstNameRequired}</p>}
                         </div>
                         <div className="space-y-2">
-                          <Label>{tr.lastName} *</Label>
-                          <Input {...register('lastName')} placeholder={tr.lastNamePlaceholder} className="border-green-200" />
-                          {errors.lastName && <p className="text-sm text-red-500">{errors.lastName.message}</p>}
+                          <Label htmlFor="lastName">{tr.lastName} *</Label>
+                          <Input id="lastName" aria-required="true" aria-invalid={!!errors.lastName} aria-describedby={errors.lastName ? 'lastName-error' : undefined} {...register('lastName')} placeholder={tr.lastNamePlaceholder} className="border-green-200" />
+                          {errors.lastName && <p id="lastName-error" className="text-sm text-red-500">{tr.lastNameRequired}</p>}
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>{tr.documentType}</Label>
+                          <Label htmlFor="documentType">{tr.documentType}</Label>
                           <Select value={documentType} onValueChange={(v) => setValue('documentType', v)}>
-                            <SelectTrigger className="border-green-200"><SelectValue /></SelectTrigger>
+                            <SelectTrigger id="documentType" className="border-green-200"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="DNI">{tr.dni}</SelectItem>
                               <SelectItem value="Pasaporte">{tr.passport}</SelectItem>
@@ -755,29 +837,30 @@ export default function Page() {
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <Label>{tr.documentNumber} *</Label>
-                          <Input {...register('documentNumber')} placeholder={tr.documentNumberPlaceholder} className="border-green-200" />
-                          {errors.documentNumber && <p className="text-sm text-red-500">{errors.documentNumber.message}</p>}
+                          <Label htmlFor="documentNumber">{tr.documentNumber} *</Label>
+                          <Input id="documentNumber" aria-required="true" aria-invalid={!!errors.documentNumber} aria-describedby={errors.documentNumber ? 'documentNumber-error' : undefined} {...register('documentNumber')} placeholder={tr.documentNumberPlaceholder} className="border-green-200" />
+                          {errors.documentNumber && <p id="documentNumber-error" className="text-sm text-red-500">{tr.documentNumberRequired}</p>}
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>{tr.nationality}</Label>
-                          <Input {...register('nationality')} placeholder={tr.nationalityPlaceholder} className="border-green-200" />
+                          <Label htmlFor="nationality">{tr.nationality}</Label>
+                          <Input id="nationality" {...register('nationality')} placeholder={tr.nationalityPlaceholder} className="border-green-200" />
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>{tr.email}</Label>
-                          <Input type="email" {...register('email')} placeholder={tr.emailPlaceholder} className="border-green-200" />
+                          <Label htmlFor="email">{tr.email}</Label>
+                          <Input id="email" type="email" {...register('email')} placeholder={tr.emailPlaceholder} className="border-green-200" />
                         </div>
                         <div className="space-y-2">
-                          <Label>{tr.phone}</Label>
-                          <Input {...register('phone')} placeholder={tr.phonePlaceholder} className="border-green-200" />
+                          <Label htmlFor="phone">{tr.phone}</Label>
+                          <Input id="phone" {...register('phone')} placeholder={tr.phonePlaceholder} className="border-green-200" />
                         </div>
                       </div>
                       <div className="space-y-2">
                         <Label>{tr.documentPhoto}</Label>
+                        {photoLoading && <p role="status" className="text-sm">{tr.preparingPhoto}</p>}
                         <div className="flex flex-wrap items-center gap-2">
                           {/* Input para cámara */}
                           <input 
@@ -799,30 +882,32 @@ export default function Page() {
                           
                           {!photoPreview ? (
                             <>
-                              <Button type="button" variant="outline" onClick={() => photoInputRef.current?.click()}>
+                              <Button type="button" variant="outline" disabled={photoLoading} onClick={() => photoInputRef.current?.click()}>
                                 <Camera className="h-4 w-4 mr-2" />{tr.takePhoto}
                               </Button>
-                              <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                              <Button type="button" variant="outline" disabled={photoLoading} onClick={() => fileInputRef.current?.click()}>
                                 <Upload className="h-4 w-4 mr-2" />{tr.uploadPhoto}
                               </Button>
                             </>
                           ) : (
                             <div className="flex items-center gap-3">
                               <div className="relative">
-                                <img src={photoPreview} alt="Preview" className="h-20 w-20 object-cover rounded-lg border-2 border-green-300" />
+                                <button type="button" aria-label={tr.previewPhoto} onClick={() => openPhotoModal(photoPreview)}>
+                                  <img src={photoPreview} alt="" className="h-20 w-28 object-contain rounded-lg border-2 border-green-300" />
+                                </button>
                                 <button 
                                   type="button" 
-                                  onClick={() => setPhotoPreview(null)} 
+                                  disabled={photoLoading} aria-label={tr.removePhoto} onClick={() => setPhotoPreview(null)} 
                                   className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
                                 >
                                   <X className="h-3 w-3" />
                                 </button>
                               </div>
                               <div className="flex flex-col gap-1">
-                                <Button type="button" variant="outline" size="sm" onClick={() => photoInputRef.current?.click()}>
+                                <Button type="button" variant="outline" size="sm" disabled={photoLoading} onClick={() => photoInputRef.current?.click()}>
                                   <Camera className="h-3 w-3 mr-1" />{tr.takePhoto}
                                 </Button>
-                                <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                                <Button type="button" variant="outline" size="sm" disabled={photoLoading} onClick={() => fileInputRef.current?.click()}>
                                   <Upload className="h-3 w-3 mr-1" />{tr.uploadPhoto}
                                 </Button>
                               </div>
@@ -834,7 +919,7 @@ export default function Page() {
                         <Checkbox id="isMainGuest" checked={isMainGuest} onCheckedChange={(c) => setValue('isMainGuest', c === true)} />
                         <Label htmlFor="isMainGuest" className="cursor-pointer">{tr.mainGuest}</Label>
                       </div>
-                      <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white">
+                      <Button type="submit" disabled={photoLoading} className="w-full bg-green-600 hover:bg-green-700 text-white">
                         <Plus className="h-4 w-4 mr-2" />{tr.addGuest}
                       </Button>
                     </form>
@@ -864,7 +949,7 @@ export default function Page() {
                                 </div>
                                 <p className="text-sm text-muted-foreground">{g.documentType}: {g.documentNumber}</p>
                               </div>
-                              <Button variant="ghost" size="sm" onClick={() => removeGuest(i)} className="text-red-500">
+                              <Button variant="ghost" size="sm" aria-label={tr.removeGuest} onClick={() => removeGuest(i)} className="text-red-500">
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
@@ -943,8 +1028,21 @@ export default function Page() {
                 <ArrowLeft className="h-4 w-4 mr-2" />{tr.backToApartments}
               </Button>
               <h2 className="text-2xl font-bold text-green-800">{tr.adminPanel}</h2>
+              {adminStatus === 'ready' && <Button variant="outline" disabled={isLoading} onClick={signOutAdmin}>{tr.signOut}</Button>}
             </div>
-            {isDataLoading ? (
+            {adminStatus === 'locked' ? (
+              <form onSubmit={signInAdmin} className="mx-auto max-w-sm space-y-4 rounded-xl bg-white p-6">
+                <Label htmlFor="adminKey">{tr.adminKey}</Label>
+                <Input id="adminKey" name="adminKey" type="password" autoComplete="current-password" required maxLength={64} />
+                {adminError && <p role="alert" className="text-sm text-red-700">{tr.adminError}</p>}
+                <Button type="submit" disabled={isLoading}>{tr.signIn}</Button>
+              </form>
+            ) : adminStatus === 'error' ? (
+              <div className="text-center py-12">
+                <p role="alert">{tr.errorLoadingRegistrations}</p>
+                <Button onClick={fetchRegistrations} className="mt-4">{tr.retry}</Button>
+              </div>
+            ) : adminStatus === 'loading' ? (
               <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>
             ) : registrations.length === 0 ? (
               <Card className="bg-white/80 backdrop-blur">
@@ -976,13 +1074,13 @@ export default function Page() {
                             <p className="text-sm text-muted-foreground">{reg.apartment?.name || 'N/A'} - {reg.guests?.length || 0} {tr.guests.toLowerCase()}</p>
                           </div>
                           <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => { setSelectedReg(reg); setShowDetailsModal(true) }}>
+                            <Button size="sm" variant="outline" aria-label={tr.registrationDetails} onClick={() => { setSelectedReg(reg); setShowDetailsModal(true) }}>
                               <Eye className="h-4 w-4" />
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => exportAsImage(reg)} className="border-green-500 text-green-700">
+                            <Button size="sm" variant="outline" aria-label={tr.download} onClick={() => exportAsImage(reg)} className="border-green-500 text-green-700">
                               <Download className="h-4 w-4" />
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => { setRegToDelete(reg.id); setShowDeleteDialog(true) }} className="border-red-500 text-red-700">
+                            <Button size="sm" variant="outline" aria-label={tr.delete} onClick={() => { setRegToDelete(reg.id); setShowDeleteDialog(true) }} className="border-red-500 text-red-700">
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>

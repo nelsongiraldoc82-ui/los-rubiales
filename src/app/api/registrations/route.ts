@@ -1,4 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
+import { requireAdmin } from '@/lib/admin-session'
+import { MAX_DOCUMENT_PHOTO_LENGTH } from '@/lib/registration-limits'
 
 const getTursoConfig = () => {
   const url = process.env.TURSO_DATABASE_URL
@@ -6,7 +8,7 @@ const getTursoConfig = () => {
   return { url, token }
 }
 
-const executeSql = async (sql: string) => {
+const executeSql = async (sql: string, args: (string | null)[] = []) => {
   const { url, token } = getTursoConfig()
   if (!url || !token) throw new Error('No config')
 
@@ -19,7 +21,7 @@ const executeSql = async (sql: string) => {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      requests: [{ type: 'execute', stmt: { sql } }, { type: 'close' }]
+      requests: [{ type: 'execute', stmt: { sql, args: args.map(value => value === null ? { type: 'null' } : { type: 'text', value }) } }, { type: 'close' }]
     })
   })
 
@@ -28,7 +30,9 @@ const executeSql = async (sql: string) => {
     throw new Error(`Turso error: ${res.status} - ${text}`)
   }
 
-  return res.json()
+  const result = await res.json()
+  if (result.results?.[0]?.type !== 'ok') throw new Error('Turso statement failed')
+  return result
 }
 
 // Extraer valor de celda Turso
@@ -38,16 +42,13 @@ const val = (cell: any): string => {
   return String(cell)
 }
 
-// Escapar SQL
-const esc = (s: string): string => {
-  if (!s) return ''
-  return s.replace(/'/g, "''")
-}
+export async function GET(request: NextRequest) {
+  const unauthorized = requireAdmin(request)
+  if (unauthorized) return unauthorized
 
-export async function GET() {
   try {
     const { url, token } = getTursoConfig()
-    if (!url || !token) return NextResponse.json([])
+    if (!url || !token) return NextResponse.json({ error: 'Error al cargar los registros' }, { status: 500 })
 
     // Obtener registros
     const regData = await executeSql(`
@@ -104,11 +105,11 @@ export async function GET() {
       }
     })
 
-    return NextResponse.json(result)
+    return NextResponse.json(result, { headers: { 'Cache-Control': 'private, no-store' } })
 
   } catch (error) {
     console.error('GET error:', error)
-    return NextResponse.json([])
+    return NextResponse.json({ error: 'Error al cargar los registros' }, { status: 500 })
   }
 }
 
@@ -124,8 +125,27 @@ export async function POST(request: Request) {
 
     console.log('POST request received:', { apartmentId, guestsCount: guests?.length })
 
-    if (!apartmentId || !guests?.length) {
+    if (typeof apartmentId !== 'string' || !apartmentId || !Array.isArray(guests) || !guests.length ||
+        (checkInDate != null && typeof checkInDate !== 'string') ||
+        (checkOutDate != null && typeof checkOutDate !== 'string')) {
       return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })
+    }
+
+    for (const guest of guests) {
+      if (!guest || typeof guest !== 'object') {
+        return NextResponse.json({ error: 'Huésped inválido' }, { status: 400 })
+      }
+      const photo = guest.documentPhoto
+      if (photo == null || photo === '') continue
+      if (typeof photo !== 'string') {
+        return NextResponse.json({ error: 'Formato de foto inválido' }, { status: 400 })
+      }
+      if (photo.length > MAX_DOCUMENT_PHOTO_LENGTH) {
+        return NextResponse.json({ error: 'La foto es demasiado grande' }, { status: 413 })
+      }
+      if (!/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(photo)) {
+        return NextResponse.json({ error: 'Formato de foto inválido' }, { status: 400 })
+      }
     }
 
     // IDs únicos
@@ -134,15 +154,15 @@ export async function POST(request: Request) {
 
     // Insertar registro sin firma (la firma puede ser muy grande)
     const checkIn = checkInDate || new Date().toISOString()
-    const checkOut = checkOutDate ? `'${checkOutDate}'` : 'NULL'
+    const checkOut = checkOutDate || null
 
     // Guardar firma en una variable separada para insertar después
     const signatureToSave = signature || ''
 
     await executeSql(`
       INSERT INTO GuestRegistration (id, apartmentId, checkInDate, checkOutDate, status, signature)
-      VALUES ('${regId}', '${apartmentId}', '${checkIn}', ${checkOut}, 'active', '')
-    `)
+      VALUES (?, ?, ?, ?, 'active', '')
+    `, [regId, apartmentId, checkIn, checkOut])
 
     // Actualizar firma por separado si existe (usando HTTP separado para evitar límites)
     if (signatureToSave) {
@@ -162,36 +182,14 @@ export async function POST(request: Request) {
       const g = guests[i]
       const guestId = `guest_${ts}_${i}`
       
-      const firstName = esc(g.firstName || '')
-      const lastName = esc(g.lastName || '')
-      const docType = esc(g.documentType || 'DNI')
-      const docNum = esc(g.documentNumber || '')
-      const isMain = g.isMainGuest ? 1 : 0
-      const nat = esc(g.nationality || '')
-      const em = esc(g.email || '')
-      const ph = esc(g.phone || '')
-
-      // Insertar huésped SIN foto primero
       await executeSql(`
-        INSERT INTO Guest (id, registrationId, firstName, lastName, documentType, documentNumber, nationality, email, phone, isMainGuest)
-        VALUES ('${guestId}', '${regId}', '${firstName}', '${lastName}', '${docType}', '${docNum}', ${nat ? `'${nat}'` : 'NULL'}, ${em ? `'${em}'` : 'NULL'}, ${ph ? `'${ph}'` : 'NULL'}, ${isMain})
-      `)
+        INSERT INTO Guest (id, registrationId, firstName, lastName, documentType, documentNumber, nationality, email, phone, isMainGuest, documentPhoto)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${g.isMainGuest ? 1 : 0}, ?)
+      `, [
+        guestId, regId, g.firstName || '', g.lastName || '', g.documentType || 'DNI',
+        g.documentNumber || '', g.nationality || null, g.email || null, g.phone || null, g.documentPhoto || null
+      ])
 
-      // Insertar foto por separado si existe (para evitar límites de SQL)
-      if (g.documentPhoto) {
-        try {
-          // Las fotos comprimidas desde el cliente son ~15-30KB
-          // Limitar a 50KB máximo por si acaso
-          const photoToSave = g.documentPhoto.length > 70000 
-            ? g.documentPhoto.substring(0, 70000) 
-            : g.documentPhoto
-          const escapedPhoto = photoToSave.replace(/'/g, "''")
-          await executeSql(`UPDATE Guest SET documentPhoto = '${escapedPhoto}' WHERE id = '${guestId}'`)
-        } catch (photoErr) {
-          console.error('Error saving photo for guest:', photoErr)
-          // Continuar aunque la foto falle
-        }
-      }
     }
 
     console.log('Registration saved successfully:', regId)
