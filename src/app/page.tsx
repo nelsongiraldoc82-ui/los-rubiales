@@ -48,6 +48,19 @@ import {
 // Traducciones simples
 const t = {
   es: {
+    loading: 'Cargando apartamentos…',
+    retry: 'Reintentar',
+    firstNameRequired: 'Nombre requerido',
+    lastNameRequired: 'Apellidos requeridos',
+    documentNumberRequired: 'Número requerido',
+    adminKey: 'Clave de acceso',
+    signIn: 'Acceder',
+    signOut: 'Cerrar sesión',
+    adminError: 'No se pudo acceder',
+    download: 'Descargar registro',
+    removeGuest: 'Quitar huésped',
+    removePhoto: 'Quitar foto',
+    language: 'Idioma',
     hotelName: 'Los Rubiales',
     hotelSubtitle: 'Hotel Rural',
     home: 'Inicio',
@@ -118,6 +131,19 @@ const t = {
     delete: 'Eliminar',
   },
   en: {
+    loading: 'Loading apartments…',
+    retry: 'Try again',
+    firstNameRequired: 'First name is required',
+    lastNameRequired: 'Last name is required',
+    documentNumberRequired: 'Document number is required',
+    adminKey: 'Access key',
+    signIn: 'Sign in',
+    signOut: 'Sign out',
+    adminError: 'Could not sign in',
+    download: 'Download registration',
+    removeGuest: 'Remove guest',
+    removePhoto: 'Remove photo',
+    language: 'Language',
     hotelName: 'Los Rubiales',
     hotelSubtitle: 'Rural Hotel',
     home: 'Home',
@@ -247,7 +273,10 @@ export default function Page() {
   const [guests, setGuests] = useState<Guest[]>([])
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [isDataLoading, setIsDataLoading] = useState(true)
+  const [apartmentsLoading, setApartmentsLoading] = useState(true)
+  const [apartmentsFailed, setApartmentsFailed] = useState(false)
+  const [adminStatus, setAdminStatus] = useState<'loading' | 'locked' | 'ready' | 'error'>('loading')
+  const [adminError, setAdminError] = useState(false)
   const [signature, setSignature] = useState<string | null>(null)
   const [checkInDate, setCheckInDate] = useState<Date>(new Date())
   const [checkOutDate, setCheckOutDate] = useState<Date | undefined>(undefined)
@@ -271,6 +300,7 @@ export default function Page() {
     defaultValues: { firstName: '', lastName: '', documentType: 'DNI', documentNumber: '', isMainGuest: false }
   })
 
+  useEffect(() => { document.documentElement.lang = language }, [language])
   useEffect(() => { fetchApartments() }, [])
   useEffect(() => { if (view === 'admin') fetchRegistrations() }, [view])
   useEffect(() => { if (view === 'signature') setTimeout(initCanvas, 100) }, [view])
@@ -343,27 +373,73 @@ export default function Page() {
   const clearSignature = () => initCanvas()
 
   const fetchApartments = async () => {
-    setIsDataLoading(true)
+    setApartmentsLoading(true)
+    setApartmentsFailed(false)
     try {
-      const res = await fetch('/api/apartments')
-      if (res.ok) {
-        const data = await res.json()
-        setApartments(Array.isArray(data) ? data : [])
-      }
-    } catch { toast.error(tr.errorLoadingApartments) }
-    finally { setIsDataLoading(false) }
+      const response = await fetch('/api/apartments')
+      if (!response.ok) throw new Error()
+      setApartments(await response.json())
+    } catch {
+      setApartmentsFailed(true)
+    } finally {
+      setApartmentsLoading(false)
+    }
   }
 
   const fetchRegistrations = async () => {
-    setIsDataLoading(true)
+    setAdminStatus('loading')
     try {
-      const res = await fetch('/api/registrations')
-      if (res.ok) {
-        const data = await res.json()
-        setRegistrations(Array.isArray(data) ? data : [])
+      const response = await fetch('/api/registrations', { cache: 'no-store' })
+      if (response.status === 401) {
+        setRegistrations([])
+        setAdminStatus('locked')
+        return
       }
-    } catch { toast.error(tr.errorLoadingRegistrations) }
-    finally { setIsDataLoading(false) }
+      if (!response.ok) throw new Error()
+      setRegistrations(await response.json())
+      setAdminStatus('ready')
+    } catch {
+      setRegistrations([])
+      setAdminStatus('error')
+    }
+  }
+
+  const signInAdmin = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const form = event.currentTarget
+    setAdminError(false)
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/admin/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: new FormData(form).get('adminKey') })
+      })
+      if (!response.ok) throw new Error()
+      await fetchRegistrations()
+    } catch {
+      setAdminError(true)
+    } finally {
+      form.reset()
+      setIsLoading(false)
+    }
+  }
+
+  const signOutAdmin = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/admin/session', { method: 'DELETE' })
+      if (!response.ok) throw new Error()
+      setRegistrations([])
+      setSelectedReg(null)
+      setSelectedPhoto(null)
+      setAdminError(false)
+      setAdminStatus('locked')
+    } catch {
+      toast.error(tr.errorLoadingRegistrations)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const selectApartment = (apt: Apartment) => {
@@ -427,11 +503,12 @@ export default function Page() {
   const handleCheckout = async (id: string) => {
     setIsLoading(true)
     try {
-      await fetch(`/api/registrations/${id}`, {
+      const response = await fetch(`/api/registrations/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'checked_out' })
       })
+      if (!response.ok) throw new Error()
       toast.success(tr.checkoutDone)
       setShowDetailsModal(false)
       fetchRegistrations()
@@ -443,7 +520,8 @@ export default function Page() {
     if (!regToDelete) return
     setIsLoading(true)
     try {
-      await fetch(`/api/registrations/${regToDelete}`, { method: 'DELETE' })
+      const response = await fetch(`/api/registrations/${regToDelete}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error()
       toast.success(tr.registrationDeleted)
       setShowDeleteDialog(false)
       setRegToDelete(null)
@@ -659,7 +737,7 @@ export default function Page() {
           </div>
           <div className="flex items-center gap-2">
             <Select value={language} onValueChange={(v) => setLanguage(v as Language)}>
-              <SelectTrigger className="w-[70px] sm:w-28 bg-white/10 border-white/30 text-white text-sm">
+              <SelectTrigger aria-label={tr.language} className="w-[70px] sm:w-28 bg-white/10 border-white/30 text-white text-sm">
                 <Globe className="h-4 w-4 sm:mr-1" />
                 <span className="hidden sm:inline"><SelectValue /></span>
               </SelectTrigger>
@@ -686,28 +764,24 @@ export default function Page() {
           <div>
             <div className="text-center mb-8">
               <h2 className="text-3xl font-bold text-green-800 mb-2">{tr.welcome}</h2>
-              <p className="text-muted-foreground">{tr.selectApartment}</p>
+              {!apartmentsLoading && !apartmentsFailed && apartments.length > 0 && <p className="text-muted-foreground">{tr.selectApartment}</p>}
             </div>
-            {isDataLoading ? (
-              <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>
-            ) : apartments.length === 0 ? (
+            {apartmentsLoading ? (
+              <p role="status" className="text-center text-muted-foreground py-12">{tr.loading}</p>
+            ) : apartmentsFailed || apartments.length === 0 ? (
               <div className="text-center py-12">
-                <p className="text-muted-foreground">{tr.noApartments}</p>
-                <Button onClick={fetchApartments} className="mt-4">Reintentar</Button>
+                <p className="text-muted-foreground">{apartmentsFailed ? tr.errorLoadingApartments : tr.noApartments}</p>
+                <Button onClick={fetchApartments} className="mt-4">{tr.retry}</Button>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
                 {apartments.map((apt) => (
-                  <Card key={apt.id} className="cursor-pointer hover:shadow-xl transition-all duration-300 border-2 border-transparent hover:border-green-500 bg-white/80 backdrop-blur" onClick={() => selectApartment(apt)}>
-                    <CardContent className="p-4 sm:p-6">
-                      <div className="flex flex-col items-center gap-3 sm:gap-4">
-                        <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-full bg-gradient-to-br from-green-600 to-green-800 flex items-center justify-center shadow-lg">
-                          <Building2 className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
-                        </div>
-                        <CardTitle className="text-lg sm:text-xl text-green-800 text-center">{apt.name}</CardTitle>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <button key={apt.id} type="button" className="flex flex-col items-center gap-4 rounded-xl border-2 border-transparent bg-white/80 px-4 py-10 shadow-sm transition-shadow hover:border-green-500 hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green-700" onClick={() => selectApartment(apt)}>
+                    <span className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-green-600 to-green-800 shadow-lg sm:h-20 sm:w-20">
+                      <Building2 aria-hidden="true" className="h-8 w-8 text-white sm:h-10 sm:w-10" />
+                    </span>
+                    <span className="text-lg font-semibold text-green-800 sm:text-xl">{apt.name}</span>
+                  </button>
                 ))}
               </div>
             )}
@@ -732,21 +806,21 @@ export default function Page() {
                     <form onSubmit={handleSubmit(handleAddGuest)} className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>{tr.firstName} *</Label>
-                          <Input {...register('firstName')} placeholder={tr.firstNamePlaceholder} className="border-green-200" />
-                          {errors.firstName && <p className="text-sm text-red-500">{errors.firstName.message}</p>}
+                          <Label htmlFor="firstName">{tr.firstName} *</Label>
+                          <Input id="firstName" aria-required="true" aria-invalid={!!errors.firstName} aria-describedby={errors.firstName ? 'firstName-error' : undefined} {...register('firstName')} placeholder={tr.firstNamePlaceholder} className="border-green-200" />
+                          {errors.firstName && <p id="firstName-error" className="text-sm text-red-500">{tr.firstNameRequired}</p>}
                         </div>
                         <div className="space-y-2">
-                          <Label>{tr.lastName} *</Label>
-                          <Input {...register('lastName')} placeholder={tr.lastNamePlaceholder} className="border-green-200" />
-                          {errors.lastName && <p className="text-sm text-red-500">{errors.lastName.message}</p>}
+                          <Label htmlFor="lastName">{tr.lastName} *</Label>
+                          <Input id="lastName" aria-required="true" aria-invalid={!!errors.lastName} aria-describedby={errors.lastName ? 'lastName-error' : undefined} {...register('lastName')} placeholder={tr.lastNamePlaceholder} className="border-green-200" />
+                          {errors.lastName && <p id="lastName-error" className="text-sm text-red-500">{tr.lastNameRequired}</p>}
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>{tr.documentType}</Label>
+                          <Label htmlFor="documentType">{tr.documentType}</Label>
                           <Select value={documentType} onValueChange={(v) => setValue('documentType', v)}>
-                            <SelectTrigger className="border-green-200"><SelectValue /></SelectTrigger>
+                            <SelectTrigger id="documentType" className="border-green-200"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="DNI">{tr.dni}</SelectItem>
                               <SelectItem value="Pasaporte">{tr.passport}</SelectItem>
@@ -755,25 +829,25 @@ export default function Page() {
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <Label>{tr.documentNumber} *</Label>
-                          <Input {...register('documentNumber')} placeholder={tr.documentNumberPlaceholder} className="border-green-200" />
-                          {errors.documentNumber && <p className="text-sm text-red-500">{errors.documentNumber.message}</p>}
+                          <Label htmlFor="documentNumber">{tr.documentNumber} *</Label>
+                          <Input id="documentNumber" aria-required="true" aria-invalid={!!errors.documentNumber} aria-describedby={errors.documentNumber ? 'documentNumber-error' : undefined} {...register('documentNumber')} placeholder={tr.documentNumberPlaceholder} className="border-green-200" />
+                          {errors.documentNumber && <p id="documentNumber-error" className="text-sm text-red-500">{tr.documentNumberRequired}</p>}
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>{tr.nationality}</Label>
-                          <Input {...register('nationality')} placeholder={tr.nationalityPlaceholder} className="border-green-200" />
+                          <Label htmlFor="nationality">{tr.nationality}</Label>
+                          <Input id="nationality" {...register('nationality')} placeholder={tr.nationalityPlaceholder} className="border-green-200" />
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>{tr.email}</Label>
-                          <Input type="email" {...register('email')} placeholder={tr.emailPlaceholder} className="border-green-200" />
+                          <Label htmlFor="email">{tr.email}</Label>
+                          <Input id="email" type="email" {...register('email')} placeholder={tr.emailPlaceholder} className="border-green-200" />
                         </div>
                         <div className="space-y-2">
-                          <Label>{tr.phone}</Label>
-                          <Input {...register('phone')} placeholder={tr.phonePlaceholder} className="border-green-200" />
+                          <Label htmlFor="phone">{tr.phone}</Label>
+                          <Input id="phone" {...register('phone')} placeholder={tr.phonePlaceholder} className="border-green-200" />
                         </div>
                       </div>
                       <div className="space-y-2">
@@ -812,7 +886,7 @@ export default function Page() {
                                 <img src={photoPreview} alt="Preview" className="h-20 w-20 object-cover rounded-lg border-2 border-green-300" />
                                 <button 
                                   type="button" 
-                                  onClick={() => setPhotoPreview(null)} 
+                                  aria-label={tr.removePhoto} onClick={() => setPhotoPreview(null)} 
                                   className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
                                 >
                                   <X className="h-3 w-3" />
@@ -864,7 +938,7 @@ export default function Page() {
                                 </div>
                                 <p className="text-sm text-muted-foreground">{g.documentType}: {g.documentNumber}</p>
                               </div>
-                              <Button variant="ghost" size="sm" onClick={() => removeGuest(i)} className="text-red-500">
+                              <Button variant="ghost" size="sm" aria-label={tr.removeGuest} onClick={() => removeGuest(i)} className="text-red-500">
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
@@ -943,8 +1017,21 @@ export default function Page() {
                 <ArrowLeft className="h-4 w-4 mr-2" />{tr.backToApartments}
               </Button>
               <h2 className="text-2xl font-bold text-green-800">{tr.adminPanel}</h2>
+              {adminStatus === 'ready' && <Button variant="outline" disabled={isLoading} onClick={signOutAdmin}>{tr.signOut}</Button>}
             </div>
-            {isDataLoading ? (
+            {adminStatus === 'locked' ? (
+              <form onSubmit={signInAdmin} className="mx-auto max-w-sm space-y-4 rounded-xl bg-white p-6">
+                <Label htmlFor="adminKey">{tr.adminKey}</Label>
+                <Input id="adminKey" name="adminKey" type="password" autoComplete="current-password" required maxLength={64} />
+                {adminError && <p role="alert" className="text-sm text-red-700">{tr.adminError}</p>}
+                <Button type="submit" disabled={isLoading}>{tr.signIn}</Button>
+              </form>
+            ) : adminStatus === 'error' ? (
+              <div className="text-center py-12">
+                <p role="alert">{tr.errorLoadingRegistrations}</p>
+                <Button onClick={fetchRegistrations} className="mt-4">{tr.retry}</Button>
+              </div>
+            ) : adminStatus === 'loading' ? (
               <div className="flex justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-green-600" /></div>
             ) : registrations.length === 0 ? (
               <Card className="bg-white/80 backdrop-blur">
@@ -976,13 +1063,13 @@ export default function Page() {
                             <p className="text-sm text-muted-foreground">{reg.apartment?.name || 'N/A'} - {reg.guests?.length || 0} {tr.guests.toLowerCase()}</p>
                           </div>
                           <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => { setSelectedReg(reg); setShowDetailsModal(true) }}>
+                            <Button size="sm" variant="outline" aria-label={tr.registrationDetails} onClick={() => { setSelectedReg(reg); setShowDetailsModal(true) }}>
                               <Eye className="h-4 w-4" />
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => exportAsImage(reg)} className="border-green-500 text-green-700">
+                            <Button size="sm" variant="outline" aria-label={tr.download} onClick={() => exportAsImage(reg)} className="border-green-500 text-green-700">
                               <Download className="h-4 w-4" />
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => { setRegToDelete(reg.id); setShowDeleteDialog(true) }} className="border-red-500 text-red-700">
+                            <Button size="sm" variant="outline" aria-label={tr.delete} onClick={() => { setRegToDelete(reg.id); setShowDeleteDialog(true) }} className="border-red-500 text-red-700">
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>

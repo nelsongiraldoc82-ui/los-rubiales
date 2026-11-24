@@ -1,10 +1,14 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
+import { requireAdmin } from '@/lib/admin-session'
 import { tursoExecute, parseTursoRows } from '@/lib/turso'
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = requireAdmin(request)
+  if (unauthorized) return unauthorized
+
   try {
     const { id } = await params
 
@@ -62,7 +66,7 @@ export async function GET(
       updatedAt: row.updatedAt
     }
 
-    return NextResponse.json(registration)
+    return NextResponse.json(registration, { headers: { 'Cache-Control': 'private, no-store' } })
   } catch (error) {
     console.error('Error:', error)
     return NextResponse.json({ error: 'Error al obtener registro', details: String(error) }, { status: 500 })
@@ -70,9 +74,12 @@ export async function GET(
 }
 
 export async function PUT(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = requireAdmin(request)
+  if (unauthorized) return unauthorized
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -99,9 +106,12 @@ export async function PUT(
 }
 
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const unauthorized = requireAdmin(request)
+  if (unauthorized) return unauthorized
+
   try {
     const { id } = await params
 

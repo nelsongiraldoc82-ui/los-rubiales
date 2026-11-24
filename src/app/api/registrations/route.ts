@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
+import { requireAdmin } from '@/lib/admin-session'
 
 const getTursoConfig = () => {
   const url = process.env.TURSO_DATABASE_URL
@@ -6,7 +7,7 @@ const getTursoConfig = () => {
   return { url, token }
 }
 
-const executeSql = async (sql: string) => {
+const executeSql = async (sql: string, args: (string | null)[] = []) => {
   const { url, token } = getTursoConfig()
   if (!url || !token) throw new Error('No config')
 
@@ -19,7 +20,7 @@ const executeSql = async (sql: string) => {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      requests: [{ type: 'execute', stmt: { sql } }, { type: 'close' }]
+      requests: [{ type: 'execute', stmt: { sql, args: args.map(value => value === null ? { type: 'null' } : { type: 'text', value }) } }, { type: 'close' }]
     })
   })
 
@@ -44,10 +45,13 @@ const esc = (s: string): string => {
   return s.replace(/'/g, "''")
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const unauthorized = requireAdmin(request)
+  if (unauthorized) return unauthorized
+
   try {
     const { url, token } = getTursoConfig()
-    if (!url || !token) return NextResponse.json([])
+    if (!url || !token) return NextResponse.json({ error: 'Error al cargar los registros' }, { status: 500 })
 
     // Obtener registros
     const regData = await executeSql(`
@@ -104,11 +108,11 @@ export async function GET() {
       }
     })
 
-    return NextResponse.json(result)
+    return NextResponse.json(result, { headers: { 'Cache-Control': 'private, no-store' } })
 
   } catch (error) {
     console.error('GET error:', error)
-    return NextResponse.json([])
+    return NextResponse.json({ error: 'Error al cargar los registros' }, { status: 500 })
   }
 }
 
@@ -124,7 +128,9 @@ export async function POST(request: Request) {
 
     console.log('POST request received:', { apartmentId, guestsCount: guests?.length })
 
-    if (!apartmentId || !guests?.length) {
+    if (typeof apartmentId !== 'string' || !apartmentId || !Array.isArray(guests) || !guests.length ||
+        (checkInDate != null && typeof checkInDate !== 'string') ||
+        (checkOutDate != null && typeof checkOutDate !== 'string')) {
       return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })
     }
 
@@ -134,15 +140,15 @@ export async function POST(request: Request) {
 
     // Insertar registro sin firma (la firma puede ser muy grande)
     const checkIn = checkInDate || new Date().toISOString()
-    const checkOut = checkOutDate ? `'${checkOutDate}'` : 'NULL'
+    const checkOut = checkOutDate || null
 
     // Guardar firma en una variable separada para insertar después
     const signatureToSave = signature || ''
 
     await executeSql(`
       INSERT INTO GuestRegistration (id, apartmentId, checkInDate, checkOutDate, status, signature)
-      VALUES ('${regId}', '${apartmentId}', '${checkIn}', ${checkOut}, 'active', '')
-    `)
+      VALUES (?, ?, ?, ?, 'active', '')
+    `, [regId, apartmentId, checkIn, checkOut])
 
     // Actualizar firma por separado si existe (usando HTTP separado para evitar límites)
     if (signatureToSave) {
