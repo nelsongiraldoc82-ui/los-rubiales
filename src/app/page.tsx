@@ -536,13 +536,17 @@ export default function Page() {
           </div>
           <div className="flex items-center gap-2">
             <Select value={language} onValueChange={(v) => setLanguage(v as Language)}>
-              <SelectTrigger aria-label={tr.language} className="w-[70px] sm:w-28 bg-white/10 border-white/30 text-white text-sm">
-                <Globe className="h-4 w-4 sm:mr-1" />
+              <SelectTrigger
+                aria-label={`${tr.language}: ${language === 'es' ? 'Español' : 'English'}`}
+                className="gap-1 border-white bg-white px-2 font-semibold text-green-950 hover:bg-green-50 focus-visible:ring-white sm:px-3 [&_svg]:text-green-950! [&_svg]:opacity-100"
+              >
+                <Globe aria-hidden="true" className="hidden size-4 text-green-950 sm:block" />
+                <span aria-hidden="true" className="sm:hidden">{language.toUpperCase()}</span>
                 <span className="hidden sm:inline"><SelectValue /></span>
               </SelectTrigger>
-              <SelectContent className="bg-green-800 border-green-600">
-                <SelectItem value="es" className="text-white hover:bg-green-700 focus:bg-green-700">Español</SelectItem>
-                <SelectItem value="en" className="text-white hover:bg-green-700 focus:bg-green-700">English</SelectItem>
+              <SelectContent className="border-green-200 bg-white text-green-950">
+                <SelectItem value="es" className="focus:bg-green-100 focus:text-green-950">Español</SelectItem>
+                <SelectItem value="en" className="focus:bg-green-100 focus:text-green-950">English</SelectItem>
               </SelectContent>
             </Select>
             {view !== 'selection' && (
