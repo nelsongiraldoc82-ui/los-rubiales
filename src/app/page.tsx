@@ -14,14 +14,12 @@ import {
   Trash2,
   Camera,
   X,
-  Eye,
   Calendar,
   Building2,
   Loader2,
   RotateCcw,
   Globe,
   ClipboardList,
-  Download,
   Upload
 } from 'lucide-react'
 
@@ -35,17 +33,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-
 // Traducciones simples
 const t = {
   es: {
@@ -54,11 +41,6 @@ const t = {
     firstNameRequired: 'Nombre requerido',
     lastNameRequired: 'Apellidos requeridos',
     documentNumberRequired: 'Número requerido',
-    adminKey: 'Clave de acceso',
-    signIn: 'Acceder',
-    signOut: 'Cerrar sesión',
-    adminError: 'No se pudo acceder',
-    download: 'Descargar registro',
     removeGuest: 'Quitar huésped',
     removePhoto: 'Quitar foto',
     previewPhoto: 'Ampliar foto del documento',
@@ -114,9 +96,9 @@ const t = {
     status: 'Estado',
     active: 'Activo',
     checkedOut: 'Finalizado',
-    checkout: 'Realizar checkout',
-    registrationDetails: 'Detalles del Registro',
-    adminPanel: 'Panel de Administración',
+    adminPanel: 'Estancias registradas',
+    allApartments: 'Todos los apartamentos',
+    noMatchingRegistrations: 'No hay estancias para este apartamento',
     noRegistrations: 'No hay registros todavía',
     errorLoadingApartments: 'Error al cargar los apartamentos',
     errorLoadingRegistrations: 'Error al cargar los registros',
@@ -126,14 +108,6 @@ const t = {
     selectApartmentError: 'Selecciona un apartamento',
     addAtLeastOneGuest: 'Añade al menos un huésped',
     signatureRequired: 'La firma es requerida',
-    checkoutDone: 'Checkout realizado correctamente',
-    checkoutError: 'Error al realizar el checkout',
-    registrationDeleted: 'Registro eliminado correctamente',
-    deleteError: 'Error al eliminar el registro',
-    deleteConfirmTitle: '¿Eliminar registro?',
-    deleteConfirmDescription: 'Esta acción no se puede deshacer.',
-    cancel: 'Cancelar',
-    delete: 'Eliminar',
   },
   en: {
     loading: 'Loading apartments…',
@@ -141,11 +115,6 @@ const t = {
     firstNameRequired: 'First name is required',
     lastNameRequired: 'Last name is required',
     documentNumberRequired: 'Document number is required',
-    adminKey: 'Access key',
-    signIn: 'Sign in',
-    signOut: 'Sign out',
-    adminError: 'Could not sign in',
-    download: 'Download registration',
     removeGuest: 'Remove guest',
     removePhoto: 'Remove photo',
     previewPhoto: 'Enlarge document photo',
@@ -201,9 +170,9 @@ const t = {
     status: 'Status',
     active: 'Active',
     checkedOut: 'Finished',
-    checkout: 'Check-out',
-    registrationDetails: 'Registration Details',
-    adminPanel: 'Admin Panel',
+    adminPanel: 'Registered stays',
+    allApartments: 'All apartments',
+    noMatchingRegistrations: 'No stays for this apartment',
     noRegistrations: 'No registrations yet',
     errorLoadingApartments: 'Error loading apartments',
     errorLoadingRegistrations: 'Error loading registrations',
@@ -213,14 +182,6 @@ const t = {
     selectApartmentError: 'Select an apartment',
     addAtLeastOneGuest: 'Add at least one guest',
     signatureRequired: 'Signature is required',
-    checkoutDone: 'Check-out completed successfully',
-    checkoutError: 'Error performing check-out',
-    registrationDeleted: 'Registration deleted successfully',
-    deleteError: 'Error deleting registration',
-    deleteConfirmTitle: 'Delete registration?',
-    deleteConfirmDescription: 'This action cannot be undone.',
-    cancel: 'Cancel',
-    delete: 'Delete',
   }
 }
 
@@ -246,16 +207,13 @@ interface Guest {
   isMainGuest: boolean
 }
 
-interface Registration {
-  id: string
+interface RegistrationSummary {
   apartmentId: string
-  apartment: Apartment
+  apartmentName: string
   checkInDate: string
-  checkOutDate?: string | null
-  guests: Guest[]
+  checkOutDate: string | null
+  guestCount: number
   status: string
-  notes?: string | null
-  signature?: string | null
 }
 
 const guestSchema = z.object({
@@ -280,22 +238,18 @@ export default function Page() {
   const [apartments, setApartments] = useState<Apartment[]>([])
   const [selectedApartment, setSelectedApartment] = useState<Apartment | null>(null)
   const [guests, setGuests] = useState<Guest[]>([])
-  const [registrations, setRegistrations] = useState<Registration[]>([])
+  const [registrations, setRegistrations] = useState<RegistrationSummary[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [apartmentsLoading, setApartmentsLoading] = useState(true)
   const [apartmentsFailed, setApartmentsFailed] = useState(false)
-  const [adminStatus, setAdminStatus] = useState<'loading' | 'locked' | 'ready' | 'error'>('loading')
-  const [adminError, setAdminError] = useState(false)
+  const [adminStatus, setAdminStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [apartmentFilter, setApartmentFilter] = useState('all')
   const [signature, setSignature] = useState<string | null>(null)
   const [checkInDate, setCheckInDate] = useState<Date>(new Date())
   const [checkOutDate, setCheckOutDate] = useState<Date | undefined>(undefined)
 
-  const [showDetailsModal, setShowDetailsModal] = useState(false)
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null)
-  const [selectedReg, setSelectedReg] = useState<Registration | null>(null)
-  const [regToDelete, setRegToDelete] = useState<string | null>(null)
 
   const photoInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -401,55 +355,12 @@ export default function Page() {
     setAdminStatus('loading')
     try {
       const response = await fetch('/api/registrations', { cache: 'no-store' })
-      if (response.status === 401) {
-        setRegistrations([])
-        setAdminStatus('locked')
-        return
-      }
       if (!response.ok) throw new Error()
       setRegistrations(await response.json())
       setAdminStatus('ready')
     } catch {
       setRegistrations([])
       setAdminStatus('error')
-    }
-  }
-
-  const signInAdmin = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const form = event.currentTarget
-    setAdminError(false)
-    setIsLoading(true)
-    try {
-      const response = await fetch('/api/admin/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: new FormData(form).get('adminKey') })
-      })
-      if (!response.ok) throw new Error()
-      await fetchRegistrations()
-    } catch {
-      setAdminError(true)
-    } finally {
-      form.reset()
-      setIsLoading(false)
-    }
-  }
-
-  const signOutAdmin = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch('/api/admin/session', { method: 'DELETE' })
-      if (!response.ok) throw new Error()
-      setRegistrations([])
-      setSelectedReg(null)
-      setSelectedPhoto(null)
-      setAdminError(false)
-      setAdminStatus('locked')
-    } catch {
-      toast.error(tr.errorLoadingRegistrations)
-    } finally {
-      setIsLoading(false)
     }
   }
 
@@ -522,36 +433,6 @@ export default function Page() {
     finally { setIsLoading(false) }
   }
 
-  const handleCheckout = async (id: string) => {
-    setIsLoading(true)
-    try {
-      const response = await fetch(`/api/registrations/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'checked_out' })
-      })
-      if (!response.ok) throw new Error()
-      toast.success(tr.checkoutDone)
-      setShowDetailsModal(false)
-      fetchRegistrations()
-    } catch { toast.error(tr.checkoutError) }
-    finally { setIsLoading(false) }
-  }
-
-  const handleDelete = async () => {
-    if (!regToDelete) return
-    setIsLoading(true)
-    try {
-      const response = await fetch(`/api/registrations/${regToDelete}`, { method: 'DELETE' })
-      if (!response.ok) throw new Error()
-      toast.success(tr.registrationDeleted)
-      setShowDeleteDialog(false)
-      setRegToDelete(null)
-      fetchRegistrations()
-    } catch { toast.error(tr.deleteError) }
-    finally { setIsLoading(false) }
-  }
-
   const compressImage = async (file: File) => {
     const url = URL.createObjectURL(file)
     try {
@@ -606,125 +487,12 @@ export default function Page() {
     setShowPhotoModal(true)
   }
 
-  const exportAsImage = async (reg: Registration) => {
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    // Calcular altura dinámica basada en número de huéspedes y si tienen fotos
-    const guestsWithPhotos = reg.guests.filter(g => g.documentPhoto)
-    const extraHeightForPhotos = guestsWithPhotos.length * 260
-    const baseHeight = 450
-    const totalHeight = baseHeight + (reg.guests.length * 30) + extraHeightForPhotos + 100
-
-    canvas.width = 800
-    canvas.height = totalHeight
-
-    // Fondo blanco
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, 800, totalHeight)
-    
-    // Cabecera verde
-    ctx.fillStyle = '#166534'
-    ctx.fillRect(0, 0, 800, 60)
-    ctx.fillStyle = '#ffffff'
-    ctx.font = 'bold 24px Arial'
-    ctx.fillText(tr.hotelName, 20, 40)
-
-    // Título
-    ctx.fillStyle = '#166534'
-    ctx.font = 'bold 18px Arial'
-    ctx.fillText(tr.registrationDetails, 20, 100)
-
-    // Información del registro
-    ctx.fillStyle = '#374151'
-    ctx.font = '14px Arial'
-    ctx.fillText(`${tr.apartment}: ${reg.apartment.name}`, 20, 140)
-    ctx.fillText(`${tr.checkIn}: ${format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })}`, 20, 170)
-    ctx.fillText(`${tr.status}: ${reg.status === 'active' ? tr.active : tr.checkedOut}`, 20, 200)
-
-    // Sección de huéspedes
-    ctx.fillStyle = '#166534'
-    ctx.font = 'bold 16px Arial'
-    ctx.fillText(`${tr.guests}:`, 20, 240)
-
-    let y = 270
-    
-    for (let i = 0; i < reg.guests.length; i++) {
-      const g = reg.guests[i]
-      
-      // Nombre del huésped
-      ctx.fillStyle = '#374151'
-      ctx.font = 'bold 14px Arial'
-      const guestLabel = g.isMainGuest ? `${g.firstName} ${g.lastName} ★ (${g.documentType}: ${g.documentNumber})` : `${g.firstName} ${g.lastName} (${g.documentType}: ${g.documentNumber})`
-      ctx.fillText(guestLabel, 40, y)
-      
-      // Nacionalidad, email, teléfono si existen
-      ctx.font = '12px Arial'
-      ctx.fillStyle = '#6b7280'
-      let infoY = y + 18
-      if (g.nationality) {
-        ctx.fillText(`${tr.nationality}: ${g.nationality}`, 50, infoY)
-        infoY += 16
-      }
-      if (g.email || g.phone) {
-        ctx.fillText(`${g.email || ''} ${g.phone || ''}`.trim(), 50, infoY)
-        infoY += 16
-      }
-      
-      // Foto del documento si existe
-      if (g.documentPhoto) {
-        try {
-          const photoImg = new window.Image()
-          photoImg.src = g.documentPhoto
-          await photoImg.decode()
-
-          const scale = Math.min(320 / photoImg.naturalWidth, 210 / photoImg.naturalHeight, 1)
-          const width = Math.round(photoImg.naturalWidth * scale)
-          const height = Math.round(photoImg.naturalHeight * scale)
-          ctx.drawImage(photoImg, 450, y - 20, width, height)
-          ctx.fillStyle = '#6b7280'
-          ctx.font = '12px Arial'
-          ctx.fillText(tr.documentPhoto, 450, y + height)
-        } catch (e) {
-          console.error('Error loading photo:', e)
-        }
-        y += 225
-      }
-      
-      y += 45
-    }
-
-    // Sección de firma
-    y += 20
-    ctx.fillStyle = '#166534'
-    ctx.font = 'bold 14px Arial'
-    ctx.fillText(tr.signature + ':', 20, y)
-    
-    if (reg.signature) {
-      const img = new window.Image()
-      img.src = reg.signature
-      await new Promise<void>((r) => { img.onload = () => r(); img.onerror = () => r() })
-      if (img.complete && img.naturalWidth > 0) {
-        ctx.drawImage(img, 20, y + 10, 250, 80)
-      }
-      y += 100
-    } else {
-      y += 20
-    }
-
-    // Pie de página
-    ctx.fillStyle = '#9ca3af'
-    ctx.font = '10px Arial'
-    ctx.fillText(`Generado: ${format(new Date(), 'PPP HH:mm', { locale: dateLocale })}`, 20, totalHeight - 20)
-
-    // Descargar
-    const link = document.createElement('a')
-    link.download = `registro-${reg.apartment.name}-${format(new Date(reg.checkInDate), 'yyyy-MM-dd')}.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
+  const formatStayDate = (value: string) => {
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? value : format(date, 'PPP', { locale: dateLocale })
   }
-
+  const adminApartments = new Map(registrations.map(reg => [reg.apartmentId, reg.apartmentName]))
+  const visibleRegistrations = registrations.filter(reg => apartmentFilter === 'all' || reg.apartmentId === apartmentFilter)
   const documentType = watch('documentType')
   const isMainGuest = watch('isMainGuest')
 
@@ -1028,16 +796,8 @@ export default function Page() {
                 <ArrowLeft className="h-4 w-4 mr-2" />{tr.backToApartments}
               </Button>
               <h2 className="text-2xl font-bold text-green-800">{tr.adminPanel}</h2>
-              {adminStatus === 'ready' && <Button variant="outline" disabled={isLoading} onClick={signOutAdmin}>{tr.signOut}</Button>}
             </div>
-            {adminStatus === 'locked' ? (
-              <form onSubmit={signInAdmin} className="mx-auto max-w-sm space-y-4 rounded-xl bg-white p-6">
-                <Label htmlFor="adminKey">{tr.adminKey}</Label>
-                <Input id="adminKey" name="adminKey" type="password" autoComplete="current-password" required maxLength={64} />
-                {adminError && <p role="alert" className="text-sm text-red-700">{tr.adminError}</p>}
-                <Button type="submit" disabled={isLoading}>{tr.signIn}</Button>
-              </form>
-            ) : adminStatus === 'error' ? (
+            {adminStatus === 'error' ? (
               <div className="text-center py-12">
                 <p role="alert">{tr.errorLoadingRegistrations}</p>
                 <Button onClick={fetchRegistrations} className="mt-4">{tr.retry}</Button>
@@ -1053,124 +813,37 @@ export default function Page() {
               </Card>
             ) : (
               <div className="space-y-4">
-                {registrations.map((reg) => {
-                  // Safe date formatting
-                  let dateStr = ''
-                  try {
-                    if (reg.checkInDate) {
-                      dateStr = format(new Date(reg.checkInDate), 'PPP', { locale: dateLocale })
-                    }
-                  } catch (e) {
-                    dateStr = reg.checkInDate || ''
-                  }
-                  
-                  return (
-                    <Card key={reg.id} className="bg-white/80 backdrop-blur">
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <Badge className={reg.status === 'active' ? 'bg-green-600' : ''}>{reg.status === 'active' ? tr.active : tr.checkedOut}</Badge>
-                            <p className="text-sm mt-2">{tr.checkIn}: {dateStr}</p>
-                            <p className="text-sm text-muted-foreground">{reg.apartment?.name || 'N/A'} - {reg.guests?.length || 0} {tr.guests.toLowerCase()}</p>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" aria-label={tr.registrationDetails} onClick={() => { setSelectedReg(reg); setShowDetailsModal(true) }}>
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="outline" aria-label={tr.download} onClick={() => exportAsImage(reg)} className="border-green-500 text-green-700">
-                              <Download className="h-4 w-4" />
-                            </Button>
-                            <Button size="sm" variant="outline" aria-label={tr.delete} onClick={() => { setRegToDelete(reg.id); setShowDeleteDialog(true) }} className="border-red-500 text-red-700">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )
-                })}
+                <div className="max-w-xs space-y-2">
+                  <Label htmlFor="apartmentFilter">{tr.apartment}</Label>
+                  <Select value={apartmentFilter} onValueChange={setApartmentFilter}>
+                    <SelectTrigger id="apartmentFilter"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{tr.allApartments}</SelectItem>
+                      {[...adminApartments].map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {visibleRegistrations.length === 0 && <p role="status">{tr.noMatchingRegistrations}</p>}
+                {visibleRegistrations.map((reg, index) => (
+                  <Card key={`${reg.apartmentId}-${reg.checkInDate}-${index}`} className="bg-white/80 backdrop-blur">
+                    <CardContent className="p-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-semibold text-green-800">{reg.apartmentName}</h3>
+                        <Badge className={reg.status === 'active' ? 'bg-green-600' : ''}>
+                          {reg.status === 'active' ? tr.active : tr.checkedOut}
+                        </Badge>
+                      </div>
+                      <p className="mt-2 text-sm">{tr.checkIn}: {formatStayDate(reg.checkInDate)}</p>
+                      {reg.checkOutDate && <p className="text-sm">{tr.checkOut}: {formatStayDate(reg.checkOutDate)}</p>}
+                      <p className="text-sm text-muted-foreground">{tr.guests}: {reg.guestCount}</p>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             )}
           </div>
         )}
       </main>
-
-      <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{tr.registrationDetails}</DialogTitle>
-          </DialogHeader>
-          {selectedReg && (
-            <div className="space-y-4">
-              <Badge className={selectedReg.status === 'active' ? 'bg-green-600' : ''}>{selectedReg.status === 'active' ? tr.active : tr.checkedOut}</Badge>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-muted-foreground">{tr.apartment}</Label>
-                  <p className="font-medium">{selectedReg.apartment?.name || 'N/A'}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">{tr.checkIn}</Label>
-                  <p className="font-medium">
-                    {(() => {
-                      try {
-                        return selectedReg.checkInDate ? format(new Date(selectedReg.checkInDate), 'PPP', { locale: dateLocale }) : 'N/A'
-                      } catch {
-                        return selectedReg.checkInDate || 'N/A'
-                      }
-                    })()}
-                  </p>
-                </div>
-              </div>
-              <Separator />
-              <div>
-                <Label className="text-lg font-semibold">{tr.guests}</Label>
-                <div className="space-y-4 mt-2">
-                  {(selectedReg.guests || []).map((g, i) => (
-                    <div key={i} className="p-4 bg-gray-50 rounded-lg border">
-                      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium text-green-800">{g.firstName || ''} {g.lastName || ''}</span>
-                            {g.isMainGuest && <Badge className="bg-amber-500 text-white text-xs">{tr.principal}</Badge>}
-                          </div>
-                          <p className="text-sm text-muted-foreground">{g.documentType || 'DNI'}: {g.documentNumber || ''}</p>
-                          {g.nationality && <p className="text-sm text-muted-foreground">{tr.nationality}: {g.nationality}</p>}
-                          {g.email && <p className="text-sm text-muted-foreground">{tr.email}: {g.email}</p>}
-                          {g.phone && <p className="text-sm text-muted-foreground">{tr.phone}: {g.phone}</p>}
-                        </div>
-                        {g.documentPhoto && g.documentPhoto.length > 10 && (
-                          <div className="flex-shrink-0">
-                            <p className="text-xs text-muted-foreground mb-1">{tr.documentPhoto}:</p>
-                            <img 
-                              src={g.documentPhoto} 
-                              alt="Documento" 
-                              className="h-24 w-32 object-cover rounded-lg border-2 border-green-300 shadow-sm cursor-pointer hover:scale-105 transition-transform" 
-                              onClick={() => openPhotoModal(g.documentPhoto)} 
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              {selectedReg.signature && (
-                <div>
-                  <Label className="text-lg font-semibold">{tr.signature}</Label>
-                  <div className="mt-2 border rounded-lg p-2 bg-white">
-                    <img src={selectedReg.signature} alt="Firma" className="max-h-32 mx-auto" />
-                  </div>
-                </div>
-              )}
-              {selectedReg.status === 'active' && (
-                <Button onClick={() => handleCheckout(selectedReg.id)} disabled={isLoading} className="w-full bg-amber-500 hover:bg-amber-600 text-white">
-                  {tr.checkout}
-                </Button>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={showPhotoModal} onOpenChange={setShowPhotoModal}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -1185,18 +858,6 @@ export default function Page() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{tr.deleteConfirmTitle}</AlertDialogTitle>
-            <AlertDialogDescription>{tr.deleteConfirmDescription}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tr.cancel}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">{tr.delete}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }
